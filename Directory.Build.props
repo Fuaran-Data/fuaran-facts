@@ -1,0 +1,27 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- FS0025 (incomplete match) is an error: the kernel's unions are closed by the specification,
+         and a new case must name every arm that has to move rather than throw at run time. -->
+    <WarningsAsErrors>$(WarningsAsErrors);FS0025</WarningsAsErrors>
+    <WarnOn>3390;$(WarnOn)</WarnOn>
+    <!-- The version every package in this repository ships at. 0.1.0 is the first version and a
+         DRAFT slot until it is tagged (STABILITY.md heads it "0.1.0 - DRAFT"): an additive change
+         rides it, a change of a higher class advances it, and once it is tagged any public-surface
+         change advances it in the same commit. -->
+    <Version>0.1.0</Version>
+    <FuaranStabilityRecord>STABILITY.md</FuaranStabilityRecord>
+    <Authors>Andrew J. Willshire</Authors>
+    <Company>Diametrical Ltd</Company>
+    <Copyright>Copyright 2026 Diametrical Ltd</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Fuaran-Data/fuaran-facts</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Fuaran-Data/fuaran-facts</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>fuaran;facts;fact;provenance;bitemporal;content-addressed;fsharp;fable</PackageTags>
+    <!-- How this repository restores what it pins: from the public registry, exactly as an outside
+         clone does. There is no local feed in nuget.config. -->
+    <FuaranRestorePath>public</FuaranRestorePath>
+  </PropertyGroup>
+</Project>

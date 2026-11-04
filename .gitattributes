@@ -1,0 +1,3 @@
+# LF everywhere, on disk and in the index; the PowerShell launchers too, so a clone on any OS
+# reads the same bytes the gate hashes.
+* text=auto eol=lf

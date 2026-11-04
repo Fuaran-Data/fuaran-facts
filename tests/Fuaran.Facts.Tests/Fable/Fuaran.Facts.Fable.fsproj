@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The JavaScript leg: the SAME certification, identity and rendering code the .NET suite runs,
+       compiled by Fable and run under node against the same corpus. Built by `dotnet fable`, never
+       by MSBuild, and in no solution. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Certify.fs" Link="Certify.fs" />
+    <Compile Include="..\SameInputs.fs" Link="SameInputs.fs" />
+    <Compile Include="..\RenderingVectors.fs" Link="RenderingVectors.fs" />
+    <Compile Include="Main.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Fuaran.Facts\Fuaran.Facts.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fable.Core" />
+  </ItemGroup>
+</Project>

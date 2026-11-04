@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <!-- ONE property for every Fuaran.Core package this repository pins: they are produced by one
+         repository at one version. Raise it in one edit, and only to a version nuget.org serves. -->
+    <FuaranCoreVersion>0.40.3</FuaranCoreVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="FSharp.Core" Version="10.1.300" />
+    <!-- The library's only dependencies: the pure SHA-256 and UTF-8 encoder (Text) and the unit
+         algebra (Unit). Both are FSharp.Core-only and Fable-clean. -->
+    <PackageVersion Include="Fuaran.Core.Text" Version="$(FuaranCoreVersion)" />
+    <PackageVersion Include="Fuaran.Core.Unit" Version="$(FuaranCoreVersion)" />
+    <!-- TEST-ONLY. -->
+    <PackageVersion Include="Expecto" Version="9.0.4" />
+    <PackageVersion Include="Fable.Core" Version="5.0.0" />
+  </ItemGroup>
+</Project>

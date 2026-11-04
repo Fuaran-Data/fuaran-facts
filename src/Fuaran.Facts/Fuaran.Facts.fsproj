@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.Facts</PackageId>
+    <Description>Fuaran.Facts - the .NET reference implementation of the Fact wire specification: the Fact kernel's types, its canonical codec, the identity frame, supersession, as-of visibility, forecastness and freshness, and metric and subject definitions as data, with value rendering in a metric's unit. Certified against the specification's conformance corpus. FSharp.Core and Fuaran.Core only, Fable-clean.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Refusal.fs" />
+    <Compile Include="Text.fs" />
+    <Compile Include="DecimalText.fs" />
+    <Compile Include="Instant.fs" />
+    <Compile Include="Types.fs" />
+    <Compile Include="Identity.fs" />
+    <Compile Include="Laws.fs" />
+    <Compile Include="Definitions.fs" />
+    <Compile Include="Rendering.fs" />
+    <Compile Include="Json.fs" />
+    <Compile Include="FactWire.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="\" />
+    <!-- Fable source distribution: a Fable-compiled consumer compiles this package from source. -->
+    <Content Include="$(MSBuildProjectFile)" PackagePath="fable\" />
+    <Content Include="*.fs" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fuaran.Core.Text" />
+    <PackageReference Include="Fuaran.Core.Unit" />
+  </ItemGroup>
+</Project>
