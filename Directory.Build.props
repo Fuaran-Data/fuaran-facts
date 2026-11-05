@@ -6,10 +6,9 @@
          and a new case must name every arm that has to move rather than throw at run time. -->
     <WarningsAsErrors>$(WarningsAsErrors);FS0025</WarningsAsErrors>
     <WarnOn>3390;$(WarnOn)</WarnOn>
-    <!-- The version every package in this repository ships at. 0.1.0 is the first version and a
-         DRAFT slot until it is tagged (STABILITY.md heads it "0.1.0 - DRAFT"): an additive change
-         rides it, a change of a higher class advances it, and once it is tagged any public-surface
-         change advances it in the same commit. -->
+    <!-- The version every package in this repository ships at. 0.1.0 is the first version,
+         released as `v0.1.0`. It is tagged, so any public-surface change advances it in the same
+         commit; the next slot is a DRAFT until its own tag. -->
     <Version>0.1.0</Version>
     <FuaranStabilityRecord>STABILITY.md</FuaranStabilityRecord>
     <Authors>Andrew J. Willshire</Authors>

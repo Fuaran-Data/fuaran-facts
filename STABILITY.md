@@ -17,7 +17,11 @@ The wire format is versioned separately, by the Fact wire specification's `wireV
 is the specification's to make first; this package follows it, and a package version that reads or writes a new
 wire version is a breaking change here.
 
-## 0.1.0 — DRAFT
+## 0.1.0 — released 2026-11-05 as `v0.1.0`
+
+**Release record.** Released from the Phase 8 tree (`35df489`), whose gate (`pwsh ./verify.ps1`, full lane) ran
+green: 75 tests passed and 0 failed, and 104 of 104 specification vectors were certified on .NET and under Fable. The
+release commit changes only this record and the publish workflow's nuget.org login.
 
 The first version: the Fact kernel, certified against the Fact wire specification version 1 (corpus of 104
 vectors and 12 relations, on .NET and under Fable).
