@@ -14,7 +14,9 @@
       4. tests     the Expecto suite, which certifies the library against the Fact wire
                    specification's conformance corpus.
       5. fable     the same certification, identity and rendering code, compiled to JavaScript by
-                   Fable and run under node against the same corpus.
+                   Fable and run under node against the same corpus; then the package compiled in
+                   one Fable project beside the published Fuaran.Core.Column source, as a consumer
+                   compiles it, and run.
       6. boundary  every tracked file and every commit message swept for the names this public
                    repository must never carry; the sweep first proves it can go red.
 
@@ -142,6 +144,33 @@ else {
         }
     }
     Stop-OnFailure 'fable'
+
+    # The consumer-shaped leg: this package's source compiled in ONE Fable project beside the published
+    # Fuaran.Core.Column source, as a consumer that takes both compiles them. A name in this package can
+    # resolve to one of Core's there and nowhere else, so the leg above cannot see that fault. Run at the
+    # Column version a current consumer takes (the project's default) and at the version this repository
+    # pins Fuaran.Core to.
+    $consumerProject = 'tests/Fuaran.Facts.Tests/FableConsumer/Fuaran.Facts.FableConsumer.fsproj'
+    $consumerDefault = @(([xml](Get-Content -Raw $consumerProject)).Project.PropertyGroup.FuaranCoreColumnConsumerVersion |
+        Where-Object { $_ })[0].'#text'
+    $pinned = @(([xml](Get-Content -Raw 'Directory.Packages.props')).Project.PropertyGroup.FuaranCoreVersion | Where-Object { $_ })[0]
+    if (-not $consumerDefault -or -not $pinned) { throw "the consumer leg could not read its Fuaran.Core.Column versions" }
+    foreach ($columnVersion in @($consumerDefault, $pinned) | Select-Object -Unique) {
+        $global:LASTEXITCODE = 0
+        Write-Stage "fable consumer (beside Fuaran.Core.Column $columnVersion)"
+        $consumerOutput = Join-Path $output "consumer-$columnVersion"
+        $env:FuaranCoreColumnConsumerVersion = $columnVersion
+        try {
+            dotnet fable tests/Fuaran.Facts.Tests/FableConsumer/Fuaran.Facts.FableConsumer.fsproj -o $consumerOutput --noCache
+            if ($global:LASTEXITCODE -eq 0) {
+                Invoke-Node (Join-Path $consumerOutput 'Main.js')
+            }
+        }
+        finally {
+            Remove-Item Env:FuaranCoreColumnConsumerVersion -ErrorAction SilentlyContinue
+        }
+        Stop-OnFailure "fable consumer (Fuaran.Core.Column $columnVersion)"
+    }
 }
 
 # ── 6. the publication-boundary sweep ──────────────────────────────────────────────────────────
