@@ -1,5 +1,10 @@
 namespace Fuaran.Facts
 
+// `Fuaran.Core.Hash` is reached through an abbreviation, never written in an expression: compiled from
+// source beside other Fuaran.Core packages, a qualified path in an expression can resolve to a union case
+// of the same name in that namespace (see Definitions.fs). An abbreviation resolves among modules only.
+module CoreHash = Fuaran.Core.Hash
+
 /// A JSON value as read, members in document order, and as written. `JNumber` keeps the token's
 /// text; `JMap` is written in ordinal key order (§3.1 rule 4) where `JObject` is written in the order
 /// given (a record, rule 3).
@@ -330,4 +335,4 @@ module internal Json =
         sb.ToString()
 
     /// The UTF-8 bytes of `text` (`Fuaran.Core`'s encoder).
-    let utf8Bytes (text: string) : byte[] = Fuaran.Core.Hash.utf8Bytes text
+    let utf8Bytes (text: string) : byte[] = CoreHash.utf8Bytes text

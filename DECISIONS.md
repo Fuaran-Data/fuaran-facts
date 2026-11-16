@@ -229,3 +229,67 @@ definition read from the wire declares none, and its host sets its own (specific
 in whole seconds, and the unit and display format stay typed. **The mapping from a time span** is
 `Legacy.windowSecondsOf`: a `System.TimeSpan` that is a whole number of seconds from 1 to 2147483647 converts to that
 many seconds, and any other span is refused (`shape-invalid`) rather than rounded.
+
+## D14 — 0.2.1: facts at rest read with every token they were stored with, and the Fable source compiles beside Core (Phase 37, 2026-11-16)
+
+The first host to build on 0.2.0 found two faults its probe had not reached. **Premise checked at take:** both
+reproduced in this repository before any change, and neither reproduces after it.
+
+**(1) The legacy reader tolerates the refused tokens at rest, and nowhere else.** 0.2.0's `LegacyFact.read` held a
+stored fact to every rule the wire applies, through `FactWire.write`, so a fact a store kept before the
+specification refused a separator inside a token no longer read: a path member containing `>` or `|`, or empty; a
+hierarchy containing `/` or `|`; a metric id containing `|`; a computed method's operation or version containing
+`:`; a distribution key containing `=` or `;`. A host with such facts at rest could not adopt without rewriting
+them, which D13 exists to prevent. The specification now states the tolerance (its §3.5 and D3, revision 1.2).
+
+`LegacyFact.read` now checks what it read through `FactWire.checkStored`: `FactWire`'s own fact reader with the token
+rules waived and nothing else, so the id is verified exactly as before and there is still one reader. The fact is
+returned as stored, its id and lineage key unchanged; their bytes are not touched. `FactWire.read` and
+`FactWire.write` are unchanged: every document and every writer still refuses each token, so a fact read with one
+cannot be written, and a new fact cannot carry one. *Read, never write* now holds at the token level as well as at
+the shape level.
+
+**The ambiguity, per token** (§3.5 states it normatively; `LegacyShape.ambiguities` pins one pair per row on both
+legs). The renderings are joined, not framed, so a tolerated token can make two different facts render alike:
+
+| Token at rest | Two facts can share | And the other fact can be one a writer accepts |
+|---|---|---|
+| `>` in a path member | the id and the lineage key (`["a>b"]`, `["a";"b"]`) | yes |
+| an empty path member | the id and the lineage key (`[""]`, `[]`; `["a";""]`, `["a>"]`) | yes (the empty path) |
+| `/` in a hierarchy | the id and the lineage key (hierarchy `a/b` path `["c"]`; hierarchy `a` path `["b/c"]`) | yes |
+| `\|` in a path member, hierarchy or metric id | the lineage key only, never the id | no |
+| `:` in an operation or version | the id and the lineage key (`("a:b","c","d")`, `("a","b","c:d")`) | yes |
+| `=` or `;` in a bucket key | the id of a `humanAsserted` fact, never the key | yes |
+
+The reader returns each fact as stored and never merges two because they render alike: a reader that merges loses
+data. What a host does is the specification's to say (§3.5): compare members before treating an id or key hit as
+the same fact when either carries a tolerated token, and keep two facts as two; a host that wants the ambiguity
+gone asserts its stored facts again under admitted tokens, as new lineages, by a migration of its own.
+
+*Alternatives.* (a) A separate reader entry point for tolerant reads: two legacy readers, one of which a host would
+call by mistake, for no gain; the legacy shape only ever holds data at rest. (b) Escape or re-frame the tokens:
+changes the bytes of exactly the keys and ids a store already indexes. (c) A flag on `FactWire.read`: puts the
+tolerance on the wire's own entry point, where a document reader could switch it on.
+
+**(2) No qualified path into `Fuaran.Core` is written in an expression.** `Definitions.fs` wrote
+`Fuaran.Core.Unit.render`, `.parse` and `.dimensionless`. A Fable consumer compiles this package's source and
+`Fuaran.Core.Column`'s source into one project, and there `Fuaran.Core.Unit` in an expression resolves to the union
+case `FieldChange.Unit` (declared with `RequireQualifiedAccess` in the same namespace) before the Unit module: 18
+errors, at Column 0.42.0 and at 0.40.3 alike. Writing the namespace out does not help, and no expression can say
+"the module". A module abbreviation's right-hand side resolves among modules and namespaces only, so each file that
+calls into Core declares one (`UnitAlgebra` for `Fuaran.Core.Unit`; `CoreHash` for `Fuaran.Core.Hash` in `Text.fs`
+and `Json.fs`, which no Core source shadows today but could) and calls through it. An abbreviation is always
+private, so the public surface does not move. **The sweep:** every other reference into `Fuaran.Core` is in a type
+position (`Fuaran.Core.UnitOfMeasure`), where a union case cannot resolve; `Fuaran.Core` is opened nowhere; and the
+bare names this package uses resolve in `Fuaran.Facts` before any parent namespace.
+
+**The gate holds it.** The Fable stage gains a consumer-shaped leg (`tests/Fuaran.Facts.Tests/FableConsumer/`): one
+Fable project compiling this package's source beside the published `Fuaran.Core.Column` source, run twice, at the
+Column version a current consumer takes (0.42.0, the project's default) and at this repository's `FuaranCoreVersion`.
+It compiles, then runs the unit functions it compiled and a value of Core's own union. The package's own leg could
+not see the fault, because it compiles no Core source beside the package. `FuaranCoreVersion` stays 0.40.3: the fix
+needs nothing newer.
+
+*Alternatives.* (a) Ask Core to rename the case or the module: a fix in another repository's public surface, for a
+resolution rule any consumer source can trigger. (b) `open Fuaran.Core` and bare `Unit.render`: opens Core's
+internal names under Fable, one of which (`Currency`) shadows this package's own, which is why nothing opens it.

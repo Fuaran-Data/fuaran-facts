@@ -6,9 +6,10 @@
          and a new case must name every arm that has to move rather than throw at run time. -->
     <WarningsAsErrors>$(WarningsAsErrors);FS0025</WarningsAsErrors>
     <WarnOn>3390;$(WarnOn)</WarnOn>
-    <!-- The version every package in this repository ships at. 0.1.0 was released as `v0.1.0`;
-         0.2.0 is a DRAFT slot until its own tag (STABILITY.md), and it is a breaking release. -->
-    <Version>0.2.0</Version>
+    <!-- The version every package in this repository ships at. 0.1.0 and 0.2.0 were released as
+         `v0.1.0` and `v0.2.0`; 0.2.1 is a DRAFT slot until its own tag (STABILITY.md), and it is
+         additive. -->
+    <Version>0.2.1</Version>
     <FuaranStabilityRecord>STABILITY.md</FuaranStabilityRecord>
     <Authors>Andrew J. Willshire</Authors>
     <Company>Diametrical Ltd</Company>

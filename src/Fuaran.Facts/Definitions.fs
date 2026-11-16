@@ -2,6 +2,13 @@ namespace Fuaran.Facts
 
 // Fuaran.Core is never opened here: compiled from source under Fable, its internal names are in
 // scope and one of them (`Currency`) would shadow this library's own.
+//
+// Nor is `Fuaran.Core.Unit` written in an expression. Compiled from source beside
+// `Fuaran.Core.Column`, that path resolves to the union case `FieldChange.Unit` in the same namespace
+// before the Unit module, and nothing in an expression can say "the module". A module abbreviation's
+// right-hand side resolves among modules and namespaces only, so every call goes through this one
+// (an abbreviation is always private: it adds nothing to this package's surface).
+module UnitAlgebra = Fuaran.Core.Unit
 
 /// A metric's unit (FACT_WIRE.md §7.2): a unit in `Fuaran.Core.Unit`'s algebra, written as its
 /// canonical text. The currency is the unit's: a metric is in a currency exactly when its unit is
@@ -10,15 +17,15 @@ namespace Fuaran.Facts
 module MetricUnit =
 
     /// The canonical text of a unit (`Fuaran.Core.Unit.render`).
-    let text (u: Fuaran.Core.UnitOfMeasure) : string = Fuaran.Core.Unit.render u
+    let text (u: Fuaran.Core.UnitOfMeasure) : string = UnitAlgebra.render u
 
     /// Reads unit text, refusing (`unit-invalid`) text that does not parse, names something not
     /// admitted, or is not the canonical text of the unit it names.
     let tryParseAt (at: string) (text': string) : Result<Fuaran.Core.UnitOfMeasure, Refusal> =
-        match Fuaran.Core.Unit.parse text' with
+        match UnitAlgebra.parse text' with
         | Error why -> Error(Refusal.make RefusalClass.UnitInvalid at (sprintf "'%s' is not a unit: %A" text' why))
         | Ok u ->
-            let canonical = Fuaran.Core.Unit.render u
+            let canonical = UnitAlgebra.render u
 
             if canonical = text' then
                 Ok u
@@ -37,7 +44,7 @@ module MetricUnit =
     /// ISO 4217 code and the prefix's symbol (`k[GBP]` is `("GBP", "k")`, `[GBP]` is `("GBP", "")`), or
     /// `None` (§7.2).
     let currencyParts (u: Fuaran.Core.UnitOfMeasure) : (string * string) option =
-        let t = Fuaran.Core.Unit.render u
+        let t = UnitAlgebra.render u
         let n = t.Length
 
         let isCap (c: char) = c >= 'A' && c <= 'Z'
@@ -98,9 +105,7 @@ module DisplayFormat =
             | Currency, Some _ when (MetricUnit.currency unit).IsNone ->
                 refuse
                     RefusalClass.DisplayFormatInvalid
-                    (sprintf
-                        "'currency' needs a unit that is one currency, and '%s' is not"
-                        (Fuaran.Core.Unit.render unit))
+                    (sprintf "'currency' needs a unit that is one currency, and '%s' is not" (UnitAlgebra.render unit))
             | _, Some _ -> Ok()
 
 /// Checks on definitions (§7.1, §7.3), the rules a reader applies, for a definition built in code.
@@ -199,11 +204,11 @@ module Legacy =
         if isNull legacy || legacy.Length = 0 then
             Error(Refusal.make RefusalClass.UnitInvalid at "an empty unit names nothing")
         elif List.contains legacy dimensionlessWords then
-            Ok Fuaran.Core.Unit.dimensionless
+            Ok UnitAlgebra.dimensionless
         elif isIsoCode legacy then
             MetricUnit.tryParseAt at ("[" + legacy + "]")
         else
-            match Fuaran.Core.Unit.parse legacy with
+            match UnitAlgebra.parse legacy with
             | Ok u -> Ok u
             | Error why ->
                 Error(

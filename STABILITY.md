@@ -17,6 +17,30 @@ The wire format is versioned separately, by the Fact wire specification's `wireV
 is the specification's to make first; this package follows it, and a package version that reads or writes a new
 wire version is a breaking change here.
 
+## 0.2.1 — DRAFT (Phase 37, 2026-11-16)
+
+**An additive release.** A host's facts at rest that carry a token the specification refuses read back as stored,
+and the package's Fable source compiles in a consumer that also compiles `Fuaran.Core.Column` (`DECISIONS.md` D14).
+Certified against the Fact wire specification version 1, revision 1.2 (corpus of 150 vectors, on .NET and under
+Fable).
+
+**Additive — the reader's widened acceptance:**
+
+- `LegacyFact.read` accepts, on data at rest only, the tokens FACT_WIRE.md §3.5 refuses: a path member containing
+  `>` or `|`, or empty; a hierarchy containing `/` or `|`; a metric id containing `|`; a computed method's operation
+  or version containing `:`; a distribution key containing `=` or `;`. Each such fact reads with its stored id
+  (still verified) and its lineage key unchanged. Where a tolerated token makes two stored facts render alike, both
+  read as stored (§3.5 names which tokens can, and what a host does). A legacy fact 0.2.0 refused for one of these
+  tokens now reads; everything else it refused it still refuses.
+- **Unchanged:** `FactWire` refuses every one of these tokens on read and on write, so no new fact carries one.
+
+**None — the Fable fix:**
+
+- `Definitions.fs`, `Text.fs` and `Json.fs` reach `Fuaran.Core.Unit` and `Fuaran.Core.Hash` through file-private
+  module abbreviations, not by a qualified path in an expression, which a consumer compiling `Fuaran.Core.Column`'s
+  source beside this package resolved to the union case `FieldChange.Unit` (18 errors). No public member changes;
+  the gate now compiles and runs the package beside `Fuaran.Core.Column` under Fable.
+
 ## 0.2.0 — released 2026-11-16 as `v0.2.0`
 
 **A breaking release.** A host whose stores already hold facts adopts the kernel without rewriting them, and the

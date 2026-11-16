@@ -718,7 +718,11 @@ let legacyFactTests =
 
             refusedFor RefusalClass.DecimalInvalid (LegacyFact.read (saved.Replace("1234.50", "1.2345E3")))
             refusedFor RefusalClass.KindUnknown (LegacyFact.read (saved.Replace("\"Scalar\"", "\"Matrix\"")))
-            refusedFor RefusalClass.TokenInvalid (LegacyFact.read (saved.Replace("\"throughput\"", "\"through|put\"")))
+            // 0.2.1 (Phase 37): a refused token is tolerated at rest, so this edit no longer refuses for
+            // `token-invalid`; the id is still verified, and the edited metric no longer gives it.
+            refusedFor
+                RefusalClass.FactIdMismatch
+                (LegacyFact.read (saved.Replace("\"throughput\"", "\"through|put\"")))
 
             let series = (LegacyShape.samples |> List.find (fun s -> s.Name = "series")).Saved
 
@@ -729,6 +733,50 @@ let legacyFactTests =
 
         test "every sample, as the JavaScript leg checks it" {
             Expect.isEmpty (LegacyShape.failures ()) "every saved fact reads back"
+        }
+
+        for s in LegacyShape.storedTokenSamples do
+            test ("a stored token reads back, and is never written: " + s.Name) {
+                let f = ok (LegacyFact.read s.Saved)
+                Expect.equal (Fact.lineageKey f) s.LineageKey "the lineage key the store indexed"
+                Expect.equal f.FactId (Fact.computeFor f) "the stored id recomputes"
+
+                match FactWire.writeFact f with
+                | Ok _ -> failtest "a writer accepted a refused token"
+                | Error r ->
+                    Expect.contains
+                        [ RefusalClass.TokenInvalid; RefusalClass.ShapeInvalid ]
+                        r.Class
+                        "refused for the token (an empty path member is shape-invalid)"
+            }
+
+        test "a stored token's fact is refused as a document, on every path a document takes" {
+            for s in LegacyShape.storedTokenSamples do
+                let f = ok (LegacyFact.read s.Saved)
+
+                match FactWire.writeFact f with
+                | Ok text -> failtestf "%s written as %s" s.Name text
+                | Error _ -> ()
+
+                // The wire text a writer would have produced, had it not refused: read as a document, it
+                // is refused too. The tolerance is the legacy reader's, never the wire's.
+                match FactWire.readFactText (FactWire.encode (FactDocument f)) with
+                | Ok _ -> failtestf "%s read as a document" s.Name
+                | Error _ -> ()
+        }
+
+        for a in LegacyShape.ambiguities do
+            test ("two stored facts render alike, and both read as stored: " + a.Name) {
+                let first = ok (LegacyFact.read a.First)
+                let second = ok (LegacyFact.read a.Second)
+                Expect.notEqual first second "two facts, not one"
+                Expect.equal (Fact.lineageKey first) (Fact.lineageKey second) "one lineage key"
+                Expect.equal (first.FactId = second.FactId) a.SameId "the id collides exactly where stated"
+            }
+
+        test "every stored-token sample and ambiguous pair, as the JavaScript leg checks them" {
+            Expect.isEmpty (LegacyShape.storedTokenFailures ()) "every stored token reads back, none writes"
+            Expect.isEmpty (LegacyShape.ambiguityFailures ()) "every ambiguous pair reads back as stored"
         }
     ]
 
