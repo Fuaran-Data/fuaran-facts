@@ -38,8 +38,9 @@ Fable).
 
 - `Definitions.fs`, `Text.fs` and `Json.fs` reach `Fuaran.Core.Unit` and `Fuaran.Core.Hash` through file-private
   module abbreviations, not by a qualified path in an expression, which a consumer compiling `Fuaran.Core.Column`'s
-  source beside this package resolved to the union case `FieldChange.Unit` (18 errors). No public member changes;
-  the gate now compiles and runs the package beside `Fuaran.Core.Column` under Fable.
+  source beside this package resolved to the union case `FieldChange.Unit` (18 errors). No public member changes.
+  The JavaScript leg now compiles and runs the package beside `Fuaran.Core.Column` 0.42.0, the version consumers
+  take; it does not also compile it beside the repository's own pin, 0.40.3 (`DECISIONS.md` D14).
 
 ## 0.2.0 — released 2026-11-16 as `v0.2.0`
 

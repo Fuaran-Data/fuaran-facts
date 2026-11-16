@@ -66,6 +66,42 @@ let private manifestOf (text: string) : Manifest =
             |> List.ofArray
     }
 
+/// The consumer-shaped checks: this project compiles the package's source beside the published
+/// `Fuaran.Core.Column` source, so compiling is most of the test. Running then checks that the package's
+/// unit functions, compiled there, answer as they do alone, and uses a value of Column's own union.
+let private consumerFailures () : (string * string) list = [
+    match Fuaran.Facts.MetricUnit.tryParse "[GBP]" with
+    | Ok u ->
+        if Fuaran.Facts.MetricUnit.text u <> "[GBP]" then
+            "MetricUnit.text", Fuaran.Facts.MetricUnit.text u
+
+        if Fuaran.Facts.MetricUnit.currency u <> Some "GBP" then
+            "MetricUnit.currency", sprintf "%A" (Fuaran.Facts.MetricUnit.currency u)
+
+        match Fuaran.Core.FieldChange.Unit(None, Some u) with
+        | Fuaran.Core.FieldChange.Unit(_, Some after) when Fuaran.Facts.MetricUnit.text after = "[GBP]" -> ()
+        | other -> "FieldChange.Unit", sprintf "%A" other
+
+        match
+            Fuaran.Facts.DisplayFormat.checkAt "f" u {
+                Style = Fuaran.Facts.Currency
+                FractionDigits = Some 0
+                Grouping = true
+            }
+        with
+        | Ok() -> ()
+        | Error r -> "DisplayFormat.checkAt", Fuaran.Facts.Refusal.describe r
+    | Error r -> "MetricUnit.tryParse", Fuaran.Facts.Refusal.describe r
+
+    match Fuaran.Facts.Legacy.unitOf "count" with
+    | Ok u when Fuaran.Facts.MetricUnit.text u = "1" -> ()
+    | other -> "Legacy.unitOf count", sprintf "%A" other
+
+    match Fuaran.Facts.Legacy.unitOf "GBP" with
+    | Ok u when Fuaran.Facts.MetricUnit.text u = "[GBP]" -> ()
+    | other -> "Legacy.unitOf GBP", sprintf "%A" other
+]
+
 let private run (corpus: string) : int =
     let manifestPath = corpus + "/manifest.json"
 
@@ -93,8 +129,13 @@ let private run (corpus: string) : int =
         for name, why in legacy do
             eprintfn "  FAIL legacy shape %s: %s" name why
 
+        let consumer = consumerFailures ()
+
+        for name, why in consumer do
+            eprintfn "  FAIL beside Fuaran.Core.Column %s: %s" name why
+
         printfn
-            "fable leg: certified %d of %d vectors and %d relations; %d same-input ids; %d legacy-shape facts, %d with a stored token, %d ambiguous pairs"
+            "fable leg: certified %d of %d vectors and %d relations; %d same-input ids; %d legacy-shape facts, %d with a stored token, %d ambiguous pairs; compiled beside Fuaran.Core.Column"
             outcome.Executed
             outcome.Listed
             outcome.RelationsChecked
@@ -103,7 +144,8 @@ let private run (corpus: string) : int =
             LegacyShape.storedTokenSamples.Length
             LegacyShape.ambiguities.Length
 
-        let failed = outcome.Failures.Length + identity.Length + legacy.Length
+        let failed =
+            outcome.Failures.Length + identity.Length + legacy.Length + consumer.Length
 
         if failed > 0 || outcome.Listed = 0 || outcome.Executed <> outcome.Listed then
             eprintfn "fable leg: %d failure(s)" failed

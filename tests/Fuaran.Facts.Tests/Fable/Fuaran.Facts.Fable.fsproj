@@ -2,11 +2,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- The JavaScript leg: the SAME certification, identity and legacy-shape code the .NET suite runs,
        compiled by Fable and run under node against the same corpus. Built by `dotnet fable`, never
-       by MSBuild, and in no solution. -->
+       by MSBuild, and in no solution.
+
+       It is also consumer-shaped: it references the published Fuaran.Core.Column, so this package's
+       source and Column's source are compiled in ONE Fable project, as a consumer that takes both
+       compiles them. A name in this package can resolve to one of Core's there and nowhere else
+       (DECISIONS.md D14), so a leg compiling the package alone cannot see that fault. The version is
+       the one a current consumer takes; a single project compiles one Column version, so the
+       repository's own Fuaran.Core pin is not compiled beside it here. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <Nullable>disable</Nullable>
+    <FuaranCoreColumnConsumerVersion Condition="'$(FuaranCoreColumnConsumerVersion)' == ''">0.42.0</FuaranCoreColumnConsumerVersion>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\Certify.fs" Link="Certify.fs" />
@@ -20,5 +28,6 @@
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
     <PackageReference Include="Fable.Core" />
+    <PackageReference Include="Fuaran.Core.Column" VersionOverride="$(FuaranCoreColumnConsumerVersion)" />
   </ItemGroup>
 </Project>

@@ -283,12 +283,14 @@ private, so the public surface does not move. **The sweep:** every other referen
 position (`Fuaran.Core.UnitOfMeasure`), where a union case cannot resolve; `Fuaran.Core` is opened nowhere; and the
 bare names this package uses resolve in `Fuaran.Facts` before any parent namespace.
 
-**The gate holds it.** The Fable stage gains a consumer-shaped leg (`tests/Fuaran.Facts.Tests/FableConsumer/`): one
-Fable project compiling this package's source beside the published `Fuaran.Core.Column` source, run twice, at the
-Column version a current consumer takes (0.42.0, the project's default) and at this repository's `FuaranCoreVersion`.
-It compiles, then runs the unit functions it compiled and a value of Core's own union. The package's own leg could
-not see the fault, because it compiles no Core source beside the package. `FuaranCoreVersion` stays 0.40.3: the fix
-needs nothing newer.
+**The gate holds it.** The existing JavaScript leg is now consumer-shaped: its Fable project
+(`tests/Fuaran.Facts.Tests/Fable/`) references the published `Fuaran.Core.Column`, at the version a current consumer
+takes (0.42.0, the project's `FuaranCoreColumnConsumerVersion`), so the package's source and Column's source are
+compiled in one Fable project. Before this it compiled no Core source beside the package, which is why it could not
+see the fault. Besides certifying the corpus, it now runs the unit functions it compiled and a value of Column's own
+union. One project compiles one Column version, so the leg does not also compile the package beside Column at this
+repository's own `FuaranCoreVersion` (0.40.3). The fault reproduced identically at both versions before the fix, and
+the leg covers the version consumers take. `FuaranCoreVersion` stays 0.40.3: the fix needs nothing newer.
 
 *Alternatives.* (a) Ask Core to rename the case or the module: a fix in another repository's public surface, for a
 resolution rule any consumer source can trigger. (b) `open Fuaran.Core` and bare `Unit.render`: opens Core's
