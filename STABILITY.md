@@ -17,12 +17,14 @@ The wire format is versioned separately, by the Fact wire specification's `wireV
 is the specification's to make first; this package follows it, and a package version that reads or writes a new
 wire version is a breaking change here.
 
-## 0.2.0 — DRAFT (Phase 35, 2026-11-16)
+## 0.2.0 — released 2026-11-16 as `v0.2.0`
 
 **A breaking release.** A host whose stores already hold facts adopts the kernel without rewriting them, and the
 package's rendering is the specification's rendering standard (`DECISIONS.md` D13). Certified against the Fact wire
-specification version 1, revision 1.1 (corpus of 148 vectors and 13 relations, on .NET and under Fable). Untagged
-and unpublished: the `v0.2.0` tag is the operator's act.
+specification version 1, revision 1.1 (corpus of 148 vectors and 13 relations, on .NET and under Fable).
+
+**Release record.** Released from the Phase 35 tree (`62f7960`), whose gate (`pwsh ./verify.ps1`, full lane) ran
+green: 71 tests passed and 0 failed, and 148 of 148 specification vectors were certified on .NET and under Fable.
 
 **Breaking — what a consumer of 0.1.0 must change:**
 
