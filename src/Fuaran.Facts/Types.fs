@@ -41,18 +41,33 @@ type TemporalExtent = {
     Label: string option
 }
 
-/// The value a fact carries (§5.3). A series is named by a content address, never inlined: a fact
-/// is an assertion about data, not a copy of it. `Absent` records a queryable gap and why.
+/// Where a series' points are (§5.3), in one of two forms a reader tells apart by the text alone.
+type SeriesAddress =
+    /// `sha256:` and 64 lower-case hex digits over the series' stored bytes (a `Fuaran.Core` content
+    /// address): any host can resolve it and verify what it fetched.
+    | ContentAddress of string
+    /// An opaque key a store minted for its own data version (`objects/weekly-revenue@v14`): only that
+    /// host can resolve it, and nothing verifies what it names. Never in a content-hash form, and never
+    /// beginning `sha256:`. It keeps the facts, and the ids, of a store that keyed its series this way.
+    | HostKey of string
+
+    /// The address as carried: what the wire writes and the value text hashes.
+    member this.Text =
+        match this with
+        | ContentAddress a
+        | HostKey a -> a
+
+/// The value a fact carries (§5.3). A series is named by its address, never inlined: a fact is an
+/// assertion about data, not a copy of it. `Absent` records a queryable gap and why.
 [<NoComparison>]
 type FactValue =
     /// One value.
     | Scalar of DecimalText
     /// The bounds of a range, `low` <= `high`. Not a probabilistic claim.
     | Interval of low: DecimalText * high: DecimalText
-    /// A body of points held elsewhere: `address` is `sha256:` and 64 lower-case hex digits over its
-    /// stored bytes (a `Fuaran.Core` content address); `locator` is a host-specific hint for where
-    /// they may be found, never part of identity.
-    | Series of address: string * locator: string option
+    /// A body of points held elsewhere: `address` says where, as a content address or a host key;
+    /// `locator` is a host-specific hint for where they may be found, never part of identity.
+    | Series of address: SeriesAddress * locator: string option
     /// Named buckets or quantiles to values; at least one.
     | Distribution of buckets: Map<string, DecimalText>
     /// A label.
@@ -140,6 +155,17 @@ type StalenessPolicy =
     /// Fresh while the fact is its lineage's head and no input it names has changed.
     | UntilUpstreamChange
 
+/// What a host does when an input a fact was computed from changes. A host's execution policy, not
+/// part of a definition's wire form or its digest: two hosts may rightly differ on it.
+type RecomputePolicy =
+    /// Recompute as soon as the change is seen.
+    | Eager
+    /// Recompute when the affected lineage is next read.
+    | OnQuery
+    /// Recompute nothing unbidden: the change shows as staleness, and a person or an explicit trigger
+    /// recomputes. What an undeclared policy (`None`) means.
+    | Manual
+
 /// How a metric's value at a parent subject relates to its children's (§7.1).
 [<NoComparison>]
 type RollUp =
@@ -194,6 +220,10 @@ type MetricDefinition = {
     RollUp: RollUp option
     /// Prose about what the metric means; never a figure.
     Context: string option
+    /// The host's recompute policy; `None` is undeclared, which a host treats as `Manual`. Carried
+    /// beside the wire members: `FactWire` neither writes nor reads it, and it is not in the
+    /// definition digest (the specification's D2, ruling 5).
+    RecomputePolicy: RecomputePolicy option
 }
 
 /// A registered subject hierarchy (§7.3).

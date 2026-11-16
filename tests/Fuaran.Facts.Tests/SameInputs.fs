@@ -148,7 +148,7 @@ let samples: Sample list = [
         Metric = "trace"
         Period = q2
         Method = HumanAsserted "ops"
-        Value = Series("sha256:" + String.replicate 32 "5f", None)
+        Value = Series(ContentAddress("sha256:" + String.replicate 32 "5f"), None)
         Inputs = []
         Expected = "e1fb5b617f3244196a6f099c9689b1d0f84577255ea2c5630c9a82ada6174f8e"
     }

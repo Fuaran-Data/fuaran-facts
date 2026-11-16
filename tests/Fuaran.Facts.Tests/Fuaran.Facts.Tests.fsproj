@@ -11,7 +11,7 @@
     <!-- Shared with the Fable leg: pure F#, no test framework. -->
     <Compile Include="Certify.fs" />
     <Compile Include="SameInputs.fs" />
-    <Compile Include="RenderingVectors.fs" />
+    <Compile Include="LegacyShape.fs" />
     <!-- .NET only. -->
     <Compile Include="Corpus.fs" />
     <Compile Include="Tests.fs" />

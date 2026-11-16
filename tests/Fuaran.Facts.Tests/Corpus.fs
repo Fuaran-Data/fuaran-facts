@@ -50,6 +50,7 @@ let load (corpusDir: string) : Result<Manifest * (string -> byte[]), string> =
                 Digest = optString v "digest"
                 RejectClass = optString v "rejectClass"
                 SameAs = optString v "sameAs"
+                LineageKey = optString v "lineageKey"
             })
             |> List.ofSeq
 

@@ -21,7 +21,17 @@ type FactStatus = {
     Fresh: bool
 }
 
-/// The eight document kinds (§9.6).
+/// One rendering, stated so that hosts can certify against it (§10.6): `Value` shown under `Metric` by
+/// the rendering rule `Rule` is `Text`.
+[<NoComparison>]
+type RenderedValue = {
+    Rule: int
+    Metric: MetricDefinition option
+    Value: FactValue
+    Text: string
+}
+
+/// The nine document kinds (§9.6).
 [<NoComparison>]
 type FactDocument =
     | FactDocument of Fact
@@ -32,6 +42,7 @@ type FactDocument =
     | FactHistoryDocument of Fact list
     | AsOfViewDocument of AsOfView
     | FactStatusDocument of FactStatus
+    | RenderedValueDocument of RenderedValue
 
 /// A document as read: what it reads as, and the members it carried that this version does not
 /// define (§3.2) — read leniently, and dropped on re-encoding.
@@ -174,22 +185,23 @@ module FactWire =
         | JString s -> ok (Instant.tryParseAt at s)
         | _ -> refuse RefusalClass.ShapeInvalid at "an instant is a string"
 
+    /// Refuses (`token-invalid`) a token that contains one of the separators joined around it (§3.5).
+    let private noSeparator (separators: string list) (at: string) (s: string) =
+        for sep in separators do
+            if s.Contains sep then
+                refuse RefusalClass.TokenInvalid at (sprintf "'%s' contains '%s'" s sep)
+
     let private readSubject (ctx: Ctx) (v: JsonValue) (at: string) : SubjectRef =
         let m = members ctx v at [ "hierarchy"; "path" ]
         let hierarchy = str (get m "hierarchy") (at + ".hierarchy") true
-
-        if hierarchy.Contains "/" then
-            refuse RefusalClass.TokenInvalid (at + ".hierarchy") (sprintf "'%s' contains '/'" hierarchy)
+        noSeparator [ "/"; Fact.LineageSeparator ] (at + ".hierarchy") hierarchy
 
         let path =
             arr (get m "path") (at + ".path")
             |> List.mapi (fun i p ->
                 let where = sprintf "%s.path[%d]" at i
                 let s = str p where true
-
-                if s.Contains ">" then
-                    refuse RefusalClass.TokenInvalid where (sprintf "'%s' contains '>'" s)
-
+                noSeparator [ ">"; Fact.LineageSeparator ] where s
                 s)
 
         { Hierarchy = hierarchy; Path = path }
@@ -210,15 +222,15 @@ module FactWire =
             Interval(lo, hi)
         | "series" ->
             let m = members ctx v at [ "kind"; "address"; "locator" ]
-            let address = str (get m "address") (at + ".address") false
+            let text = str (get m "address") (at + ".address") true
 
-            if not (TextRules.isContentAddress address) then
+            match SeriesAddress.tryParse text with
+            | Some address -> Series(address, optStr (get m "locator") (at + ".locator") true)
+            | None ->
                 refuse
                     RefusalClass.ShapeInvalid
                     (at + ".address")
-                    (sprintf "'%s' is not a sha256 content address" address)
-
-            Series(address, optStr (get m "locator") (at + ".locator") true)
+                    (sprintf "'%s' is in a content-hash form but is not a sha256 content address" text)
         | "distribution" ->
             let m = members ctx v at [ "kind"; "buckets" ]
             let buckets = obj (get m "buckets") (at + ".buckets")
@@ -337,6 +349,7 @@ module FactWire =
 
         let subject = readSubject ctx (get m "subject") (at + ".subject")
         let metric = str (get m "metric") (at + ".metric") true
+        noSeparator [ Fact.LineageSeparator ] (at + ".metric") metric
         let value = readValue ctx (get m "value") (at + ".value")
         let period = readPeriod ctx (get m "period") (at + ".period")
         let asOf = instant (get m "asOf") (at + ".asOf")
@@ -491,6 +504,7 @@ module FactWire =
             CanonicalMethod = canonicalMethod
             RollUp = rollUp
             Context = context
+            RecomputePolicy = None
         }
 
     let private readSubjectDefinition (ctx: Ctx) (v: JsonValue) (at: string) : SubjectDefinition =
@@ -561,25 +575,26 @@ module FactWire =
         | Some v -> JString v
         | None -> JNull
 
+    let private valueTree (value: FactValue) : JsonValue =
+        match value with
+        | Scalar d -> JObject [ "kind", JString "scalar"; "value", JString d.Text ]
+        | Interval(lo, hi) -> JObject [ "kind", JString "interval"; "low", JString lo.Text; "high", JString hi.Text ]
+        | Series(address, locator) ->
+            JObject [
+                "kind", JString "series"
+                "address", JString address.Text
+                "locator", optString locator
+            ]
+        | Distribution buckets ->
+            JObject [
+                "kind", JString "distribution"
+                "buckets", JMap(buckets |> Map.toList |> List.map (fun (k, d) -> k, JString d.Text))
+            ]
+        | Categorical c -> JObject [ "kind", JString "categorical"; "value", JString c ]
+        | Absent reason -> JObject [ "kind", JString "absent"; "reason", JString reason ]
+
     let private factTree (f: Fact) : JsonValue =
-        let value =
-            match f.Value with
-            | Scalar d -> JObject [ "kind", JString "scalar"; "value", JString d.Text ]
-            | Interval(lo, hi) ->
-                JObject [ "kind", JString "interval"; "low", JString lo.Text; "high", JString hi.Text ]
-            | Series(address, locator) ->
-                JObject [
-                    "kind", JString "series"
-                    "address", JString address
-                    "locator", optString locator
-                ]
-            | Distribution buckets ->
-                JObject [
-                    "kind", JString "distribution"
-                    "buckets", JMap(buckets |> Map.toList |> List.map (fun (k, d) -> k, JString d.Text))
-                ]
-            | Categorical c -> JObject [ "kind", JString "categorical"; "value", JString c ]
-            | Absent reason -> JObject [ "kind", JString "absent"; "reason", JString reason ]
+        let value = valueTree f.Value
 
         let method =
             match f.Method with
@@ -734,6 +749,18 @@ module FactWire =
                 "forecast", JBool s.Forecast
                 "fresh", JBool s.Fresh
             ]
+        | RenderedValueDocument r ->
+            JObject [
+                "kind", JString "renderedValue"
+                "wireVersion", JNumber(string WireVersion)
+                "rule", JNumber(string r.Rule)
+                "metric",
+                (match r.Metric with
+                 | Some m -> metricDefinitionTree m
+                 | None -> JNull)
+                "value", valueTree r.Value
+                "text", JString r.Text
+            ]
 
     /// The canonical encoding of `doc` (§3), unchecked: a document built in code is written as it
     /// is. `write` is the checked form.
@@ -750,6 +777,7 @@ module FactWire =
         "factHistory"
         "asOfView"
         "factStatus"
+        "renderedValue"
     ]
 
     let private readParsed (text: string) (raw: JsonValue) : ReadDocument =
@@ -795,6 +823,38 @@ module FactWire =
                     At = at
                     History = history
                     Visible = visible
+                }
+            | "renderedValue" ->
+                head raw "$" "renderedValue"
+
+                let m =
+                    members ctx raw "$" [ "kind"; "wireVersion"; "rule"; "metric"; "value"; "text" ]
+
+                let rule = int (int' (get m "rule") "$.rule" -2147483648L 2147483647L)
+
+                if rule <> FactRendering.Rule then
+                    refuse RefusalClass.VersionUnsupported "$.rule" (sprintf "rendering rule %d" rule)
+
+                let metric =
+                    match get m "metric" with
+                    | JNull -> None
+                    | x -> Some(readMetricDefinition ctx x "$.metric")
+
+                let value = readValue ctx (get m "value") "$.value"
+                let text' = str (get m "text") "$.text" false
+                let derived = FactRendering.renderFor metric value
+
+                if text' <> derived then
+                    refuse
+                        RefusalClass.RenderingMismatch
+                        "$.text"
+                        (sprintf "states '%s', rule %d gives '%s'" text' rule derived)
+
+                RenderedValueDocument {
+                    Rule = rule
+                    Metric = metric
+                    Value = value
+                    Text = text'
                 }
             | _ ->
                 head raw "$" "factStatus"

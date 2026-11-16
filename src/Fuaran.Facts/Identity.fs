@@ -52,6 +52,27 @@ module InputHash =
     let named (evidence: Evidence) : string list =
         evidence.InputHashes |> List.filter isContentHash
 
+/// Reading a series address (§5.3): a content address, a host key, or neither.
+[<RequireQualifiedAccess; CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
+module SeriesAddress =
+
+    /// The address `text` is: `sha256:` and 64 lower-case hex digits is a `ContentAddress`; any other
+    /// non-empty string that is not in the content-hash form and does not begin `sha256:` is a
+    /// `HostKey`; and text in a content-hash form that is not a sha256 content address (`sha1:...`, a
+    /// truncated digest) is `None`, so a malformed address is never read as a key.
+    let tryParse (text: string) : SeriesAddress option =
+        if TextRules.isContentAddress text then
+            Some(ContentAddress text)
+        elif
+            isNull text
+            || text.Length = 0
+            || InputHash.isContentHash text
+            || text.StartsWith "sha256:"
+        then
+            None
+        else
+            Some(HostKey text)
+
 /// A fact's identity, its lineage key and its forecastness (§4, §6.1, §6.5).
 [<RequireQualifiedAccess; CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module Fact =
@@ -83,7 +104,7 @@ module Fact =
         match v with
         | Scalar d -> "scalar:" + d.Text
         | Interval(lo, hi) -> "interval:" + lo.Text + ":" + hi.Text
-        | Series(address, _) -> "series:" + address
+        | Series(address, _) -> "series:" + address.Text
         | Distribution buckets ->
             buckets
             |> Map.toList
@@ -140,16 +161,25 @@ module Fact =
     let computeFor (f: Fact) : string =
         compute f.Subject f.Metric f.Period f.Method (effectiveInputHashes f.Method f.Evidence f.Value)
 
-    /// The lineage key (§6.1): the subject, metric, period and method renderings, framed so the key
-    /// is unambiguous. The inputs and the value are not in it: a new input or value supersedes within
-    /// a lineage, while another method starts a competing one.
+    /// The separator the lineage key joins its fields with. A reader refuses it inside a hierarchy, a
+    /// path member and a metric id (§3.5), which is what makes the key unambiguous.
+    [<Literal>]
+    let LineageSeparator = "|"
+
+    /// The lineage key (§6.1): the subject, metric, period and method renderings joined by `|`, the
+    /// form a store indexes a lineage by. The inputs and the value are not in it: a new input or value
+    /// supersedes within a lineage, while another method starts a competing one.
     let lineageKey (f: Fact) : string =
-        Frame.text [
+        String.concat LineageSeparator [
             subjectRendering f.Subject
             f.Metric.Value
             periodRendering f.Period
             methodIdentity f.Method
         ]
+
+    /// The lineage digest (§6.1): lower-case hex SHA-256 over the lineage key's UTF-8 bytes, what a
+    /// store holding one head per lineage indexes it by.
+    let lineageDigest (f: Fact) : string = TextRules.sha256Hex (lineageKey f)
 
     /// Whether two facts are in one lineage.
     let sameLineage (a: Fact) (b: Fact) : bool = lineageKey a = lineageKey b

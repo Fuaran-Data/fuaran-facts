@@ -26,6 +26,7 @@ type RefusalClass =
     | SupersedesMissing
     | ViewMismatch
     | StatusMismatch
+    | RenderingMismatch
 
 /// Why a document, a value or a history was refused: the class, where (a `$`-rooted path into the
 /// document, or the name of the argument), and a sentence for a person.
@@ -62,6 +63,7 @@ module RefusalClass =
         | RefusalClass.SupersedesMissing -> "supersedes-missing"
         | RefusalClass.ViewMismatch -> "view-mismatch"
         | RefusalClass.StatusMismatch -> "status-mismatch"
+        | RefusalClass.RenderingMismatch -> "rendering-mismatch"
 
     /// Every class, in §3.6's order.
     let all: RefusalClass list = [
@@ -86,6 +88,7 @@ module RefusalClass =
         RefusalClass.SupersedesMissing
         RefusalClass.ViewMismatch
         RefusalClass.StatusMismatch
+        RefusalClass.RenderingMismatch
     ]
 
     /// The class a wire spelling names, or `None`.

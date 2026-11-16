@@ -33,9 +33,10 @@ module MetricUnit =
     /// Reads canonical unit text.
     let tryParse (text': string) : Result<Fuaran.Core.UnitOfMeasure, Refusal> = tryParseAt "unit" text'
 
-    /// The ISO 4217 code of the currency a unit is — one currency factor to the first power,
-    /// optionally prefixed — or `None` (§7.2).
-    let currency (u: Fuaran.Core.UnitOfMeasure) : string option =
+    /// The currency a unit is — one currency factor to the first power, optionally prefixed — as its
+    /// ISO 4217 code and the prefix's symbol (`k[GBP]` is `("GBP", "k")`, `[GBP]` is `("GBP", "")`), or
+    /// `None` (§7.2).
+    let currencyParts (u: Fuaran.Core.UnitOfMeasure) : (string * string) option =
         let t = Fuaran.Core.Unit.render u
         let n = t.Length
 
@@ -50,9 +51,12 @@ module MetricUnit =
             && isCap t[n - 2]
             && TextRules.allChars (fun c -> (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) (t.Substring(0, n - 5))
         then
-            Some(t.Substring(n - 4, 3))
+            Some(t.Substring(n - 4, 3), t.Substring(0, n - 5))
         else
             None
+
+    /// The ISO 4217 code of the currency a unit is, or `None` (§7.2).
+    let currency (u: Fuaran.Core.UnitOfMeasure) : string option = currencyParts u |> Option.map fst
 
 /// Matching for a metric's canonical-method selector (§7.1): a full method identity, or a prefix of
 /// one ending at a `:` boundary — `computed:rollup` selects every version and parameterisation of
@@ -179,7 +183,8 @@ module Definition =
 module Legacy =
 
     /// The free-text unit words that name a dimensionless count or ratio, and so convert to `1`.
-    let dimensionlessWords: string list = [ "1"; "count"; "items"; "units"; "ratio" ]
+    /// `bytes` is a count: `Fuaran.Core.Unit` admits no unit of information (FACT_WIRE.md §7.2).
+    let dimensionlessWords: string list = [ "1"; "count"; "items"; "units"; "ratio"; "bytes" ]
 
     let private isIsoCode (s: string) =
         s.Length = 3 && TextRules.allChars (fun c -> c >= 'A' && c <= 'Z') s
@@ -208,11 +213,67 @@ module Legacy =
                         (sprintf "'%s' is neither a word the conversion table holds nor a unit: %A" legacy why)
                 )
 
-    /// The display format a .NET standard numeric format string names: `""` is verbatim; `N<d>` a
-    /// grouped number, `F<d>` an ungrouped one, `P<d>` a grouped percent and `C<d>` a grouped
-    /// currency, each with `d` fraction digits (0–28; 2 when omitted, the invariant culture's
-    /// default), either letter case. Every other string — a custom pattern such as `#,##0.00` — is
-    /// refused (`display-format-invalid`): its meaning is a formatting library's, not data.
+    /// A custom numeric pattern of one of the four plain shapes — `0`, `0.` and zeros, `#,##0`,
+    /// `#,##0.` and zeros — each optionally followed by `%`: its style, fraction digits and grouping.
+    /// Each names exactly one display format, so it converts; any other pattern does not.
+    let private plainPattern (pattern: string) : (DisplayStyle * int * bool) option =
+        let body, style =
+            if pattern.EndsWith "%" then
+                pattern.Substring(0, pattern.Length - 1), Percent
+            else
+                pattern, Number
+
+        let grouping, rest =
+            if body.StartsWith "#,##0" then true, body.Substring 5
+            elif body.StartsWith "0" then false, body.Substring 1
+            else false, "?"
+
+        if rest = "" then
+            Some(style, 0, grouping)
+        elif
+            rest.Length >= 2
+            && rest[0] = '.'
+            && TextRules.allChars (fun c -> c = '0') (rest.Substring 1)
+        then
+            Some(style, rest.Length - 1, grouping)
+        else
+            None
+
+    /// The standard format a refused custom pattern should be written as, for the refusal to name.
+    let private replacementFor (pattern: string) : string =
+        let digits =
+            match pattern.IndexOf '.' with
+            | -1 -> 0
+            | i ->
+                pattern.Substring(i + 1)
+                |> Seq.takeWhile (fun c -> c = '0' || c = '#')
+                |> Seq.length
+
+        if pattern |> Seq.exists (fun c -> not ("#0,.%".Contains c)) then
+            sprintf
+                "write the currency as the metric's unit and use 'C%d', or use 'N%d' for a plain number"
+                digits
+                digits
+        elif pattern.Contains "%" then
+            sprintf "use 'P%d'" digits
+        elif pattern.Contains "," then
+            sprintf "use 'N%d'" digits
+        else
+            sprintf "use 'F%d'" digits
+
+    /// The display format a stored .NET numeric format string names (`DECISIONS.md` D5, D13):
+    ///
+    ///   - `""` is verbatim;
+    ///   - a standard format: `N<d>` a grouped number, `F<d>` an ungrouped one, `P<d>` a grouped
+    ///     percent and `C<d>` a grouped currency, each with `d` fraction digits (0–28; 2 when omitted,
+    ///     the invariant culture's default), either letter case;
+    ///   - a custom pattern of one of four plain shapes, which each name one format: `0` and `0.00` an
+    ///     ungrouped number, `#,##0` and `#,##0.00` a grouped one, each with as many digits as zeros
+    ///     after the point, and the same followed by `%` a percent.
+    ///
+    /// Every other string is refused (`display-format-invalid`), and the refusal names the standard
+    /// format to write instead: a pattern with literal text (`£#,##0`) restates a currency the unit
+    /// already makes, and any other pattern's meaning is a formatting library's, not data.
     let displayFormatOf (legacy: string) : Result<DisplayFormat, Refusal> =
         let at = "legacy.displayFormat"
 
@@ -222,35 +283,38 @@ module Legacy =
         if isNull legacy || legacy.Length = 0 then
             Ok DisplayFormat.verbatim
         else
-            let digits = legacy.Substring 1
+            let standard () =
+                let digits = legacy.Substring 1
 
-            let style =
-                match legacy[0] with
-                | 'N'
-                | 'n' -> Some(Number, true)
-                | 'F'
-                | 'f' -> Some(Number, false)
-                | 'P'
-                | 'p' -> Some(Percent, true)
-                | 'C'
-                | 'c' -> Some(Currency, true)
+                let style =
+                    match legacy[0] with
+                    | 'N'
+                    | 'n' -> Some(Number, true)
+                    | 'F'
+                    | 'f' -> Some(Number, false)
+                    | 'P'
+                    | 'p' -> Some(Percent, true)
+                    | 'C'
+                    | 'c' -> Some(Currency, true)
+                    | _ -> None
+
+                match style with
+                | Some(s, grouping) when TextRules.allChars TextRules.isDigit digits && digits.Length <= 2 ->
+                    Some(s, (if digits = "" then 2 else int digits), grouping)
                 | _ -> None
 
-            match style with
-            | None -> refuse (sprintf "'%s' is not a standard numeric format the conversion table holds" legacy)
-            | Some _ when not (TextRules.allChars TextRules.isDigit digits) || digits.Length > 2 ->
-                refuse (sprintf "'%s' is not a standard numeric format the conversion table holds" legacy)
-            | Some(s, grouping) ->
-                let d = if digits = "" then 2 else int digits
-
-                if d > 28 then
-                    refuse (sprintf "'%s' asks for more than 28 fraction digits" legacy)
-                else
-                    Ok {
-                        Style = s
-                        FractionDigits = Some d
-                        Grouping = grouping
-                    }
+            match plainPattern legacy |> Option.orElseWith standard with
+            | None ->
+                refuse (
+                    sprintf "'%s' is a custom pattern the conversion does not hold; %s" legacy (replacementFor legacy)
+                )
+            | Some(_, d, _) when d > 28 -> refuse (sprintf "'%s' asks for more than 28 fraction digits" legacy)
+            | Some(style, d, grouping) ->
+                Ok {
+                    Style = style
+                    FractionDigits = Some d
+                    Grouping = grouping
+                }
 
 #if !FABLE_COMPILER
     /// The staleness window a `System.TimeSpan` names, in whole seconds (1 to 2147483647), or a

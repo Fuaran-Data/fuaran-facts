@@ -16,6 +16,8 @@ type Vector = {
     Digest: string option
     RejectClass: string option
     SameAs: string option
+    /// A `lineage` vector's lineage key (§6.1), checked beside its digest.
+    LineageKey: string option
 }
 
 /// One entry of the manifest's `relations` (§9.3): `Ids` is `equal` or `distinct`, or `History` is
@@ -74,11 +76,18 @@ let certifyVector (readFile: string -> byte[]) (byId: Map<string, Vector>) (v: V
                 let digest =
                     match v.Family, read.Document with
                     | "identity", FactDocument f -> Some(Fact.computeFor f)
+                    | "lineage", FactDocument f -> Some(Fact.lineageDigest f)
                     | ("definition" | "registry"), _ -> Some(FactWire.definitionDigest bytes)
                     | _ -> None
 
+                let lineageKey =
+                    match v.Family, read.Document with
+                    | "lineage", FactDocument f when v.LineageKey <> Some(Fact.lineageKey f) ->
+                        Error(sprintf "lineage key %s, the manifest lists %A" (Fact.lineageKey f) v.LineageKey)
+                    | _ -> Ok()
+
                 match digest, v.Digest with
-                | Some d, Some expected when d = expected -> Ok()
+                | Some d, Some expected when d = expected -> lineageKey
                 | Some d, Some expected -> Error(sprintf "digest %s, the manifest lists %s" d expected)
                 | None, _ -> Error(sprintf "no digest rule for family '%s'" v.Family)
                 | _, None -> Error "the manifest lists no digest"

@@ -2,7 +2,9 @@
 
 The .NET reference implementation of the [Fact wire specification](https://github.com/Fuaran-Data/fuaran-fact-specification):
 the Fact kernel's types, its canonical codec, the identity frame, supersession, as-of visibility, forecastness
-and freshness, and metric and subject definitions as data, with a value rendered in its metric's unit and format.
+and freshness, and metric and subject definitions as data, with a value rendered by the specification's rendering
+standard. A store that already holds facts in the kernel's legacy saved shape reads them with `LegacyFact.read`,
+with their ids and lineage keys unchanged.
 `FSharp.Core` and two `Fuaran.Core` packages only, and Fable-clean: the same ids, bytes and renderings on .NET and
 in JavaScript.
 
@@ -38,7 +40,7 @@ let text = FactWire.writeFact accepted                       // the canonical by
 
 ```
 src/Fuaran.Facts/          the package
-tests/Fuaran.Facts.Tests/  the Expecto suite; Certify.fs, SameInputs.fs and RenderingVectors.fs are shared
+tests/Fuaran.Facts.Tests/  the Expecto suite; Certify.fs, SameInputs.fs and LegacyShape.fs are shared
                            with the JavaScript leg under Fable/
 run.ps1                    build, test, certify on both legs, sweep the publication boundary
 DECISIONS.md               why it is the way it is
@@ -59,13 +61,13 @@ worse than none. `-SkipFormat`, `-SkipBuild`, `-SkipTests` and `-SkipFable` shor
 ## What is deliberately not here
 
 Storage, queries over populations of facts, disclosure enforcement, signatures and presentation beyond a value's
-rendering. A Fact is portable data; how a host keeps it, who may see it and how it is shown are the host's
+rendered text, and writing the legacy saved shape (it is read, never written). A Fact is portable data; how a host keeps it, who may see it and how it is shown are the host's
 business. Disclosure labels are carried, never enforced.
 
 ## Relation to Fuaran Core
 
 A metric's unit is a [`Fuaran.Core.Unit`](https://github.com/Fuaran-Core/fuaran-core/blob/main/docs/units.md)
-value, a series is named by a `Fuaran.Core` content address, and the SHA-256 is `Fuaran.Core`'s pure
+value, a series is named by a `Fuaran.Core` content address (or an opaque host key), and the SHA-256 is `Fuaran.Core`'s pure
 implementation. The fact identity frame is the specification's, distinct from Core's record identity.
 
 ## Licence

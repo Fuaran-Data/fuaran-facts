@@ -17,6 +17,42 @@ The wire format is versioned separately, by the Fact wire specification's `wireV
 is the specification's to make first; this package follows it, and a package version that reads or writes a new
 wire version is a breaking change here.
 
+## 0.2.0 — DRAFT (Phase 35, 2026-11-16)
+
+**A breaking release.** A host whose stores already hold facts adopts the kernel without rewriting them, and the
+package's rendering is the specification's rendering standard (`DECISIONS.md` D13). Certified against the Fact wire
+specification version 1, revision 1.1 (corpus of 148 vectors and 13 relations, on .NET and under Fable). Untagged
+and unpublished: the `v0.2.0` tag is the operator's act.
+
+**Breaking — what a consumer of 0.1.0 must change:**
+
+- `FactValue.Series` carries a `SeriesAddress` (`ContentAddress` or `HostKey`) where it carried a string. Wrap an
+  existing content address in `ContentAddress`; read one with `SeriesAddress.tryParse`.
+- `MetricDefinition` gains `RecomputePolicy: RecomputePolicy option`, so every record expression that builds one
+  names it (`None` keeps 0.1.0's meaning).
+- `Fact.lineageKey` returns the specification's `|`-joined key (§6.1), not the length-prefixed frame. A caller that
+  stored 0.1.0's keys holds different bytes.
+- `FactDocument` gains `RenderedValueDocument`, and `RefusalClass` gains `RenderingMismatch`: an exhaustive match on
+  either names the new case.
+- `RenderGlyphs` and `FactRendering.renderWith` are removed, and `FactRendering.formatDecimal` takes no glyphs: the
+  rendering's glyphs are fixed by the standard (§10). A host showing a localised form does so on top of the rendering,
+  and never compares against it.
+- **Behaviour.** The reader refuses `|` in a hierarchy, a path member and a metric id (`token-invalid`). A figure in a
+  prefixed currency unit renders with the prefix after it (`£12.50k` for `12.5` in `k[GBP]`, where 0.1.0 wrote
+  `£12.50`).
+
+**Additive:**
+
+- `SeriesAddress` and `SeriesAddress.tryParse`; a series named by an opaque host key reads and writes (§5.3).
+- `Fact.lineageDigest` and `Fact.LineageSeparator`.
+- `RecomputePolicy` (`Eager`, `OnQuery`, `Manual`), the host's policy, carried beside the wire members.
+- `FactRendering.Rule` (1) and `FactRendering.renderUnder`; `RenderedValue` and the `renderedValue` document kind;
+  `MetricUnit.currencyParts`.
+- `LegacyFact.read`: a fact in the legacy saved shape, read and held to every rule the wire applies; never written.
+- `Legacy.unitOf` converts `bytes` to `1`; `Legacy.displayFormatOf` converts the four plain custom patterns (`0`,
+  `0.00`, `#,##0`, `#,##0.00`, each optionally followed by `%`), and a refused pattern's refusal names the standard
+  format to write instead.
+
 ## 0.1.0 — released 2026-11-05 as `v0.1.0`
 
 **Release record.** Released from the Phase 8 tree (`35df489`), whose gate (`pwsh ./verify.ps1`, full lane) ran

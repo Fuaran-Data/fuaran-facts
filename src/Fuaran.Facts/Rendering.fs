@@ -1,7 +1,8 @@
 namespace Fuaran.Facts
 
-/// ISO 4217 code → the symbol a figure in that currency is shown with. **Data, not culture**: the
-/// table is the whole mapping and reads no culture data, so a rendering is the same on every host.
+/// ISO 4217 code → the symbol a figure in that currency is shown with (FACT_WIRE.md §10.4). **Data,
+/// not culture**: the table is the whole mapping and reads no culture data, so a rendering is the same
+/// on every host.
 /// The symbols are the English (CLDR `en`) prefix forms, so a figure reads unambiguously in English
 /// prose: the US dollar alone takes the bare `$`, every other dollar names its country (`A$`,
 /// `CA$`). A code the table does not hold is shown with the code itself as its prefix (`CHF 1,299`).
@@ -37,31 +38,16 @@ module CurrencySymbols =
         | Some symbol -> symbol
         | None -> code + " "
 
-/// The glyphs a rendering is written with. The specification fixes the number — its rounding, its
-/// digits, where a group boundary falls — and leaves the glyphs to the reader (FACT_WIRE.md §7.1).
-type RenderGlyphs = {
-    DecimalSeparator: string
-    GroupSeparator: string
-    PercentSign: string
-    /// The prefix for a currency, from its ISO 4217 code.
-    CurrencyPrefix: string -> string
-}
-
-[<RequireQualifiedAccess>]
-module RenderGlyphs =
-
-    /// `.`, `,`, `%` and `CurrencySymbols.prefix`: the invariant, English-reading glyphs.
-    let invariant: RenderGlyphs = {
-        DecimalSeparator = "."
-        GroupSeparator = ","
-        PercentSign = "%"
-        CurrencyPrefix = CurrencySymbols.prefix
-    }
-
-/// A value shown as its metric declares (§7.1): the one rendering a value has, shared by every
-/// surface that quotes it, so a value never renders two ways at two doors.
+/// The rendering standard (FACT_WIRE.md §10): the one text a value is shown as under its metric's
+/// display format, the same on every host, glyphs included. A host may show a person a localised form,
+/// but that form is not the rendering and is never what a quotation is checked against.
 [<RequireQualifiedAccess>]
 module FactRendering =
+
+    /// The rendering rule this module implements (§10.1). A record that keeps a rendering for later
+    /// checking records this number; a later rule is a new number, and rule 1 is never redefined.
+    [<Literal>]
+    let Rule = 1
 
     /// `d` rounded half away from zero to `digits` places: (negative, digits of the magnitude with
     /// the point removed). Exact, on bigint, on every host.
@@ -84,7 +70,7 @@ module FactRendering =
 
         (negative && q <> 0I), q
 
-    let private group (glyphs: RenderGlyphs) (grouping: bool) (whole: string) : string =
+    let private group (grouping: bool) (whole: string) : string =
         if not grouping || whole.Length <= 3 then
             whole
         else
@@ -100,54 +86,49 @@ module FactRendering =
                 parts.Add(whole.Substring(i, 3))
                 i <- i + 3
 
-            String.concat glyphs.GroupSeparator parts
+            String.concat "," parts
 
-    let private digitsText (glyphs: RenderGlyphs) (grouping: bool) (digits: int) (q: bigint) : string =
+    /// §10.2: the digits of `q` at `digits` places, `.` before the fraction, `,` between groups.
+    let private digitsText (grouping: bool) (digits: int) (q: bigint) : string =
         let text = (string q).PadLeft(digits + 1, '0')
         let whole = text.Substring(0, text.Length - digits)
         let fraction = text.Substring(text.Length - digits)
-        let whole = group glyphs grouping whole
+        let whole = group grouping whole
 
-        if digits = 0 then
-            whole
-        else
-            whole + glyphs.DecimalSeparator + fraction
+        if digits = 0 then whole else whole + "." + fraction
 
-    /// One decimal shown under `format` for a metric in `unit`.
-    let formatDecimal
-        (glyphs: RenderGlyphs)
-        (format: DisplayFormat)
-        (unit: Fuaran.Core.UnitOfMeasure)
-        (d: DecimalText)
-        : string =
+    /// One decimal shown under `format` for a metric in `unit` (§10.3): `-` before everything when the
+    /// rounded value is below zero, `%` with no space, a currency's prefix before the digits and a
+    /// prefixed unit's symbol after them (`£12.50k` in `k[GBP]`).
+    let formatDecimal (format: DisplayFormat) (unit: Fuaran.Core.UnitOfMeasure) (d: DecimalText) : string =
         match format.Style, format.FractionDigits with
         | Verbatim, _
         | _, None -> d.Text
         | Number, Some n ->
             let negative, q = rounded d 0 n
-            (if negative then "-" else "") + digitsText glyphs format.Grouping n q
+            (if negative then "-" else "") + digitsText format.Grouping n q
         | Percent, Some n ->
             let negative, q = rounded d 2 n
-
-            (if negative then "-" else "")
-            + digitsText glyphs format.Grouping n q
-            + glyphs.PercentSign
+            (if negative then "-" else "") + digitsText format.Grouping n q + "%"
         | Currency, Some n ->
             let negative, q = rounded d 0 n
 
-            let prefix =
-                match MetricUnit.currency unit with
-                | Some code -> glyphs.CurrencyPrefix code
-                | None -> ""
+            let prefix, unitPrefix =
+                match MetricUnit.currencyParts unit with
+                | Some(code, unitPrefix) -> CurrencySymbols.prefix code, unitPrefix
+                | None -> "", ""
 
-            (if negative then "-" else "") + prefix + digitsText glyphs format.Grouping n q
+            (if negative then "-" else "")
+            + prefix
+            + digitsText format.Grouping n q
+            + unitPrefix
 
     let private renderValue (fmt: DecimalText -> string) (value: FactValue) : string =
         match value with
         | Scalar d -> fmt d
         | Interval(lo, hi) -> fmt lo + " to " + fmt hi
         // A series is named, never inlined: show the reference.
-        | Series(address, _) -> "series " + address
+        | Series(address, _) -> "series " + address.Text
         | Distribution buckets ->
             buckets
             |> Map.toList
@@ -158,14 +139,24 @@ module FactRendering =
         // An absence is shown honestly, never made into a number.
         | Absent reason -> "absent (" + reason + ")"
 
-    /// `value` shown as `metric` declares it, with `glyphs`. With no metric, every quantity is shown
+    /// `value` shown as `metric` declares it, under rule 1 (§10.5): `£21,240` for `21240.00` in a
+    /// `[GBP]` metric formatted `currency`, 0 digits, grouped. With no metric, every quantity is shown
     /// verbatim.
-    let renderWith (glyphs: RenderGlyphs) (metric: MetricDefinition option) (value: FactValue) : string =
+    let renderFor (metric: MetricDefinition option) (value: FactValue) : string =
         match metric with
         | None -> renderValue (fun d -> d.Text) value
-        | Some m -> renderValue (formatDecimal glyphs m.DisplayFormat m.Unit) value
+        | Some m -> renderValue (formatDecimal m.DisplayFormat m.Unit) value
 
-    /// `value` shown as `metric` declares it, with the invariant glyphs: `£21,240` for `21240.00` in a
-    /// `[GBP]` metric formatted `currency`, 0 digits, grouped.
-    let renderFor (metric: MetricDefinition option) (value: FactValue) : string =
-        renderWith RenderGlyphs.invariant metric value
+    /// `value` shown under the rendering rule `rule` names, or a refusal (`version-unsupported`) for a
+    /// rule this version does not implement. A quotation recorded under a rule is checked here, under
+    /// that rule.
+    let renderUnder (rule: int) (metric: MetricDefinition option) (value: FactValue) : Result<string, Refusal> =
+        if rule = Rule then
+            Ok(renderFor metric value)
+        else
+            Error(
+                Refusal.make
+                    RefusalClass.VersionUnsupported
+                    "rule"
+                    (sprintf "rendering rule %d; this version implements rule %d" rule Rule)
+            )

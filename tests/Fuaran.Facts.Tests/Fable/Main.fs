@@ -53,6 +53,7 @@ let private manifestOf (text: string) : Manifest =
                 Digest = optString v "digest"
                 RejectClass = optString v "rejectClass"
                 SameAs = optString v "sameAs"
+                LineageKey = optString v "lineageKey"
             })
             |> List.ofArray
         Relations =
@@ -84,20 +85,20 @@ let private run (corpus: string) : int =
         for name, actual, expected in identity do
             eprintfn "  FAIL same-inputs %s: %s, expected %s" name actual expected
 
-        let rendering = RenderingVectors.failures ()
+        let legacy = LegacyShape.failures ()
 
-        for name, actual, expected in rendering do
-            eprintfn "  FAIL rendering %s: '%s', expected '%s'" name actual expected
+        for name, why in legacy do
+            eprintfn "  FAIL legacy shape %s: %s" name why
 
         printfn
-            "fable leg: certified %d of %d vectors and %d relations; %d same-input ids; %d renderings"
+            "fable leg: certified %d of %d vectors and %d relations; %d same-input ids; %d legacy-shape facts"
             outcome.Executed
             outcome.Listed
             outcome.RelationsChecked
             SameInputs.samples.Length
-            RenderingVectors.vectors.Length
+            LegacyShape.samples.Length
 
-        let failed = outcome.Failures.Length + identity.Length + rendering.Length
+        let failed = outcome.Failures.Length + identity.Length + legacy.Length
 
         if failed > 0 || outcome.Listed = 0 || outcome.Executed <> outcome.Listed then
             eprintfn "fable leg: %d failure(s)" failed

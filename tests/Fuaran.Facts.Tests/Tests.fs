@@ -153,6 +153,63 @@ let identityTests =
             Expect.equal a.FactId b.FactId "value, asOf and input order are outside the frame"
         }
 
+        test "the lineage key is the four renderings joined by '|' (§6.1)" {
+            let f =
+                factOf widget "revenue" q2 rollup (Scalar(d "1")) computedScalarInputs "2026-07-02T06:00:00Z"
+
+            Expect.equal
+                (Fact.lineageKey f)
+                "product/acme>widget-x|revenue|2026-04-01T00:00:00.0000000Z..2026-07-01T00:00:00.0000000Z|computed:rollup:2:sha256:ffaf48da5032d34dffdd6cbd98f6190bfb534d309c233e434cfbf0c0b4314d51"
+                "the key §6.1 prints"
+
+            Expect.equal
+                (Fact.lineageDigest f)
+                (Fuaran.Core.Hash.sha256Hex (Fact.lineageKey f))
+                "the digest is over the key's UTF-8 bytes"
+        }
+
+        test "'|' is refused where it would make the lineage key ambiguous (§3.5)" {
+            let f = factOf widget "revenue" q2 rollup (Scalar(d "1")) [] "2026-07-02T06:00:00Z"
+            let reminted (g: Fact) = { g with FactId = Fact.computeFor g }
+
+            refusedFor
+                RefusalClass.TokenInvalid
+                (FactWire.writeFact (
+                    reminted {
+                        f with
+                            Metric = MetricRef "revenue|net"
+                    }
+                ))
+
+            refusedFor
+                RefusalClass.TokenInvalid
+                (FactWire.writeFact (
+                    reminted {
+                        f with
+                            Subject = {
+                                widget with
+                                    Hierarchy = "product|line"
+                            }
+                    }
+                ))
+
+            refusedFor
+                RefusalClass.TokenInvalid
+                (FactWire.writeFact (
+                    reminted {
+                        f with
+                            Subject = {
+                                widget with
+                                    Path = [ "acme"; "widget|x" ]
+                            }
+                    }
+                ))
+
+            Expect.isOk
+                (FactWire.writeFact (reminted { f with Method = HumanAsserted "a|b" }))
+                "a method's members may carry '|': the method is the key's last field"
+        }
+
         test "the lineage key leaves inputs out and the method in" {
             let a =
                 factOf widget "revenue" q2 rollup (Scalar(d "1")) [ "x" ] "2026-07-02T06:00:00Z"
@@ -177,6 +234,30 @@ let identityTests =
                         AsOf = at "2026-07-01T00:00:00Z"
                 })
                 "known at its end"
+        }
+
+        test "a series address is a content address or a host key, told apart by its text (§5.3)" {
+            let content = "sha256:" + String.replicate 32 "5f"
+            Expect.equal (SeriesAddress.tryParse content) (Some(ContentAddress content)) "a content address"
+
+            Expect.equal (SeriesAddress.tryParse "objects/weekly@v14") (Some(HostKey "objects/weekly@v14")) "a host key"
+
+            Expect.equal (SeriesAddress.tryParse ("sha1:" + String.replicate 20 "ab")) None "another algorithm"
+            Expect.equal (SeriesAddress.tryParse "sha256:abc") None "a truncated content address"
+            Expect.equal (SeriesAddress.tryParse "") None "empty"
+
+            let f =
+                factOf
+                    widget
+                    "revenue_weekly"
+                    q2
+                    (HumanAsserted "finance-lead")
+                    (Series(HostKey "objects/weekly@v14", None))
+                    []
+                    "2026-07-02T06:00:00Z"
+
+            Expect.equal (Fact.valueText f.Value) "series:objects/weekly@v14" "the key enters the value text as carried"
+            Expect.equal (ok (FactWire.readFactText (ok (FactWire.writeFact f)))) f "a host-key series round-trips"
         }
 
         test "the input-hash form" {
@@ -388,6 +469,7 @@ let private revenue: MetricDefinition = {
     CanonicalMethod = Some "computed:rollup"
     RollUp = Some(Additive(d "0.50"))
     Context = Some "Net invoiced revenue after refunds, recognised in the period the order shipped."
+    RecomputePolicy = None
 }
 
 let definitionTests =
@@ -452,6 +534,7 @@ let legacyTests =
                     "items", "1"
                     "units", "1"
                     "ratio", "1"
+                    "bytes", "1"
                     "1", "1"
                     "%", "%"
                     "ms", "ms"
@@ -460,11 +543,11 @@ let legacyTests =
         }
 
         test "a unit the table does not hold is refused, not guessed" {
-            for legacy in [ ""; "gbp"; "bytes"; "B"; "tokens"; "north" ] do
+            for legacy in [ ""; "gbp"; "B"; "tokens"; "north" ] do
                 refusedFor RefusalClass.UnitInvalid (Legacy.unitOf legacy)
         }
 
-        test "standard numeric format strings convert; custom patterns are refused" {
+        test "standard numeric format strings and the four plain custom patterns convert; others are refused" {
             let fmt style digits grouping = {
                 Style = style
                 FractionDigits = digits
@@ -481,11 +564,32 @@ let legacyTests =
                     "P1", fmt Percent (Some 1) true
                     "C0", fmt Currency (Some 0) true
                     "C2", fmt Currency (Some 2) true
+                    "0", fmt Number (Some 0) false
+                    "0.00", fmt Number (Some 2) false
+                    "#,##0", fmt Number (Some 0) true
+                    "#,##0.00", fmt Number (Some 2) true
+                    "0.0%", fmt Percent (Some 1) false
+                    "#,##0.0%", fmt Percent (Some 1) true
                 ] do
                 Expect.equal (Legacy.displayFormatOf legacy) (Ok expected) legacy
 
-            for legacy in [ "£#,##0.00"; "#,##0.00"; "£#,##0"; "G"; "E2"; "N29"; "N100" ] do
-                refusedFor RefusalClass.DisplayFormatInvalid (Legacy.displayFormatOf legacy)
+            for legacy, replacement in
+                [
+                    "£#,##0.00", "'C2'"
+                    "£#,##0", "'C0'"
+                    "#,###", "'N0'"
+                    "0.##", "'F2'"
+                    "#0.0%", "'P1'"
+                    "G", "'C0'"
+                    "E2", "'C0'"
+                    "N29", "28"
+                    "N100", "'N0'"
+                ] do
+                match Legacy.displayFormatOf legacy with
+                | Ok _ -> failtestf "%s was accepted" legacy
+                | Error r ->
+                    Expect.equal r.Class RefusalClass.DisplayFormatInvalid legacy
+                    Expect.stringContains r.Message replacement (legacy + " names its replacement")
         }
 
         test "a staleness window converts in whole seconds" {
@@ -495,31 +599,136 @@ let legacyTests =
         }
     ]
 
+/// The rendering standard is pinned by the corpus's `rendering` family on both legs; these hold the
+/// package's own surface to it.
 let renderingTests =
-    testList "rendering (§7.1)" [
-        for name, metric, value, expected in RenderingVectors.vectors do
-            test name { Expect.equal (FactRendering.renderFor metric value) expected name }
+    testList "rendering (§10)" [
+        test "rule 1 is the standard, and another rule is refused" {
+            Expect.equal FactRendering.Rule 1 "rule 1"
 
-        test "the glyphs are the reader's" {
-            let glyphs = {
-                RenderGlyphs.invariant with
-                    DecimalSeparator = ","
-                    GroupSeparator = "."
-            }
+            Expect.equal
+                (FactRendering.renderUnder 1 (Some revenue) (Scalar(d "-1234.5")))
+                (Ok "-£1,235")
+                "a negative currency figure leads with '-'"
 
-            let n2 = {
+            refusedFor RefusalClass.VersionUnsupported (FactRendering.renderUnder 2 (Some revenue) (Scalar(d "1")))
+        }
+
+        test "a rendered value whose text is not the rule's is refused" {
+            let doc text =
+                RenderedValueDocument {
+                    Rule = 1
+                    Metric = Some revenue
+                    Value = Scalar(d "-1234.5")
+                    Text = text
+                }
+
+            Expect.isOk (FactWire.write (doc "-£1,235")) "the rule's text"
+            refusedFor RefusalClass.RenderingMismatch (FactWire.write (doc "(£1,235)"))
+        }
+
+        test "a prefixed currency unit shows its prefix after the number" {
+            let kgbp = {
                 revenue with
+                    Unit = ok (MetricUnit.tryParse "k[GBP]")
                     DisplayFormat = {
-                        Style = Number
+                        Style = Currency
                         FractionDigits = Some 2
                         Grouping = true
                     }
             }
 
+            Expect.equal (FactRendering.renderFor (Some kgbp) (Scalar(d "12.5"))) "£12.50k" "k[GBP]"
+        }
+    ]
+
+let recomputeTests =
+    testList "the recompute policy (the host's, off the wire)" [
+        test "a definition's bytes and digest do not carry it" {
+            for policy in [ Some Eager; Some OnQuery; Some Manual ] do
+                let withPolicy = {
+                    revenue with
+                        RecomputePolicy = policy
+                }
+
+                Expect.equal
+                    (FactWire.write (MetricDefinitionDocument withPolicy))
+                    (FactWire.write (MetricDefinitionDocument revenue))
+                    "the same bytes"
+
+                Expect.equal (FactWire.metricDigest withPolicy) (FactWire.metricDigest revenue) "the same digest"
+        }
+
+        test "a definition read from the wire declares none" {
+            let text =
+                ok (
+                    FactWire.write (
+                        MetricDefinitionDocument {
+                            revenue with
+                                RecomputePolicy = Some Eager
+                        }
+                    )
+                )
+
+            match FactWire.readText text with
+            | Ok {
+                     Document = MetricDefinitionDocument read
+                 } -> Expect.equal read.RecomputePolicy None "undeclared"
+            | other -> failtestf "read as %A" other
+        }
+    ]
+
+let legacyFactTests =
+    testList "the legacy saved shape (read, never written)" [
+        for s in LegacyShape.samples do
+            test s.Name {
+                let f = ok (LegacyFact.read s.Saved)
+                Expect.equal (Fact.lineageKey f) s.LineageKey "the lineage key that implementation indexed"
+                Expect.equal f.FactId (Fact.computeFor f) "the id recomputes"
+            }
+
+        test "a quantity's text and an instant's ticks are kept" {
+            let saved = (LegacyShape.samples |> List.find (fun s -> s.Name = "scalar")).Saved
+            let f = ok (LegacyFact.read saved)
+            Expect.equal f.Value (Scalar(d "1234.50")) "the scale is the number's text"
+            Expect.equal (Instant.toWire f.AsOf) "2026-04-02T06:30:00.5Z" "seven digits, trailing zeros dropped"
+            Expect.equal f.Confidence (Some { Value = d "0.9"; Basis = None }) "the confidence"
+        }
+
+        test "a date with no zone is UTC, and a series key is a host key" {
+            let noZone =
+                (LegacyShape.samples |> List.find (fun s -> s.Name = "scalar-no-zone")).Saved
+
+            Expect.equal (Instant.toWire (ok (LegacyFact.read noZone)).AsOf) "2026-04-02T06:30:00.5Z" "UTC"
+            let series = (LegacyShape.samples |> List.find (fun s -> s.Name = "series")).Saved
+
             Expect.equal
-                (FactRendering.renderWith glyphs (Some n2) (Scalar(d "1234.5")))
-                "1.234,50"
-                "the number is fixed, the glyphs are not"
+                (ok (LegacyFact.read series)).Value
+                (Series(HostKey "objects/throughput@v12", None))
+                "the store's own version key"
+        }
+
+        test "what the wire would refuse, the legacy reader refuses" {
+            let saved = (LegacyShape.samples |> List.find (fun s -> s.Name = "scalar")).Saved
+            refusedFor RefusalClass.FactIdMismatch (LegacyFact.read (saved.Replace("\"op.sum\"", "\"op.max\"")))
+
+            refusedFor
+                RefusalClass.InstantInvalid
+                (LegacyFact.read (saved.Replace("06:30:00.5000000Z", "06:30:00+01:00")))
+
+            refusedFor RefusalClass.DecimalInvalid (LegacyFact.read (saved.Replace("1234.50", "1.2345E3")))
+            refusedFor RefusalClass.KindUnknown (LegacyFact.read (saved.Replace("\"Scalar\"", "\"Matrix\"")))
+            refusedFor RefusalClass.TokenInvalid (LegacyFact.read (saved.Replace("\"throughput\"", "\"through|put\"")))
+
+            let series = (LegacyShape.samples |> List.find (fun s -> s.Name = "series")).Saved
+
+            refusedFor
+                RefusalClass.ShapeInvalid
+                (LegacyFact.read (series.Replace("objects/throughput@v12", "sha1:" + String.replicate 20 "ab")))
+        }
+
+        test "every sample, as the JavaScript leg checks it" {
+            Expect.isEmpty (LegacyShape.failures ()) "every saved fact reads back"
         }
     ]
 
@@ -656,6 +865,8 @@ let all =
         definitionTests
         legacyTests
         renderingTests
+        recomputeTests
+        legacyFactTests
         codecTests
         corpusTests
     ]

@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Fuaran.Facts</PackageId>
-    <Description>Fuaran.Facts - the .NET reference implementation of the Fact wire specification: the Fact kernel's types, its canonical codec, the identity frame, supersession, as-of visibility, forecastness and freshness, and metric and subject definitions as data, with value rendering in a metric's unit. Certified against the specification's conformance corpus. FSharp.Core and Fuaran.Core only, Fable-clean.</Description>
+    <Description>Fuaran.Facts - the .NET reference implementation of the Fact wire specification: the Fact kernel's types, its canonical codec, the identity frame, supersession, as-of visibility, forecastness and freshness, and metric and subject definitions as data, with the specification's rendering standard and a reader for the legacy saved shape of stored facts. Certified against the specification's conformance corpus. FSharp.Core and Fuaran.Core only, Fable-clean.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
@@ -20,6 +20,7 @@
     <Compile Include="Rendering.fs" />
     <Compile Include="Json.fs" />
     <Compile Include="FactWire.fs" />
+    <Compile Include="LegacyFact.fs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="\" />

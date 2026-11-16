@@ -98,7 +98,8 @@ then refused by the definition's own check (`display-format-invalid`), because t
 from zero on exact integer arithmetic, so the rendering is the same on every host. Two deliberate departures from
 the .NET formats the stored strings named: a negative currency figure is written `-£1,235` rather than
 `(£1,235)`, and a percent as `12.3%` rather than `12.3 %`. The specification fixes the number and leaves the
-glyphs to the reader, and `RenderGlyphs` is where a reader states its own.
+glyphs to the reader, and `RenderGlyphs` is where a reader states its own. *Superseded by D13:* the
+rendering is now the specification's standard, glyphs included, and `RenderGlyphs` is gone.
 
 ## D6 — Decimal text and ticks, not platform types (Phase 8, 2026-11-04)
 
@@ -160,3 +161,71 @@ lineage's current head (or nothing, for a lineage's first fact), and refuses a f
 that head's, since a history with it would break L3. Accepting an id the history already holds changes nothing
 (L2). Whatever `Supersedes` a caller set on a draft is ignored, because the specification derives it and never
 takes it from a producer.
+
+## D13 — 0.2.0: a host with stored facts adopts without migrating them, and one rendering is the standard (Phase 35, 2026-11-16)
+
+0.1.0 was to be the kernel of the implementation whose stores already hold fact ids, lifted (D2). A probe run there
+against 0.1.0 found its ids equal on every case and four differences that reach data at rest or text a reader sees:
+the lineage key (0.1.0 framed it; that implementation's stores index a digest of the `|`-joined form), the saved
+shape of a fact (a quantity as a JSON number, an instant as an ISO date, where 0.1.0's types serialise otherwise), a
+series address (the store's own data version key, which 0.1.0's grammar refused), and the rendering of numbers. Three
+operator rulings (2026-11-15) settled them, and the Fact wire specification moved first, in its revision 1.1 (its
+D2). This entry records what the package did. **Premise checked at take:** each of the four differences reproduced
+against the published 0.1.0, and the same probe run against this tree's build shows none.
+
+**(1) The lineage key is the specification's `|`-joined form.** `Fact.lineageKey` joins the subject, metric, period
+and method renderings with `|` (`Fact.LineageSeparator`), and `Fact.lineageDigest` is the SHA-256 of its UTF-8 bytes,
+what a store indexes a lineage by. The reader refuses `|` inside a hierarchy, a path member and a metric id
+(`token-invalid`), so no two lineages share a key; a method's members keep `|`. This supersedes D2's framed key.
+
+**(2) A series address is typed: `ContentAddress` or `HostKey`.** `FactValue.Series` carries a `SeriesAddress`, and
+`SeriesAddress.tryParse` tells the two forms apart by text alone, refusing text in a content-hash form that is not a
+sha256 content address. A consumer can therefore tell an address it can verify from a key only its host resolves.
+This supersedes D2's change 2 for stores that keyed their series by version.
+
+**(3) The legacy saved shape is read, never written (`LegacyFact.read`).** The shape is what the earlier kernel's
+general-purpose serialiser wrote: PascalCase members, a quantity as a JSON number whose token text is kept as the
+decimal text, an instant with seven fractional digits and with or without `Z` (UTC either way; an offset is refused,
+because that serialiser never wrote one), a union case as an object named for it. What is read is held to every
+rule the specification's reader applies, through `FactWire.write`, so there is still one reader (D9): a legacy fact
+whose id is not the digest of its own members is refused. `FactWire` is the only writer; nothing writes the legacy
+shape, so a store converts to the specification's encoding whenever it next writes a fact, and never has to.
+`tests/Fuaran.Facts.Tests/LegacyShape.fs` pins eight facts as that serialiser wrote them, one of each value kind, a
+date with no zone and every disclosure label, each with the id and lineage key that implementation minted; both legs
+read them back.
+*Alternative.* Serialiser converters on the package's types keeping the legacy shape: it would make the legacy shape
+a second wire, written as well as read, and tie the package to one serialiser.
+
+**(4) The rendering is the specification's standard, rule 1 (its §10).** `FactRendering.renderFor` is the standard;
+`FactRendering.Rule` is its number and `FactRendering.renderUnder` refuses a rule this version does not implement.
+`RenderGlyphs` and `renderWith` are removed: the standard fixes the glyphs, and a hook for swapping them would be a
+second renderer, which ruling 2 removes. A prefixed currency unit now shows its prefix after the number (`£12.50k`),
+because 0.1.0's `£12.50` for `12.5` in `k[GBP]` misstated the amount. The rendering vectors that were this
+repository's own (`RenderingVectors.fs`) are now the specification's `rendering` corpus family, certified on both
+legs, so the file is gone. **Two renderings a deployed host shows change** from the format strings stored
+definitions name: a negative currency figure is `-£1,235` where the platform's format gave `(£1,235)`, and a percent
+is `12.3%` where it gave `12.3 %` (D5 already chose both for this package; the standard now makes them every host's).
+
+**(5) Conversions from stored definitions (extends D5).**
+
+| Stored | Converts to | Why |
+|---|---|---|
+| unit `bytes` | `1` | Core admits no unit of information; a byte count is a count (specification §7.2) |
+| format `0`, `0.00`, … | `number`, ungrouped, as many digits as zeros | the one display format the pattern names |
+| format `#,##0`, `#,##0.00`, … | `number`, grouped | likewise |
+| either of the above followed by `%` | `percent`, grouped as the pattern is | likewise |
+| any other custom pattern | refused, naming the standard format to write | its meaning is a formatting library's |
+
+A refused pattern names its replacement: `£#,##0.00` is "write the currency as the metric's unit and use `C2`",
+`#,###` is `N0`, `0.##` is `F2`. A `C` format over a unit that is not one currency (stored definitions carry `C0`
+over `count`, which the platform's format rendered as `¤10`) converts and is then refused by the definition check, as
+D5 said; the replacement is `N0`.
+
+**(6) The recompute policy is the host's, carried beside the wire members.** `MetricDefinition.RecomputePolicy`
+(`Eager`, `OnQuery`, `Manual`; `None` undeclared, which a host treats as `Manual`) lets a host use this package's
+definition type alone (ruling 3). `FactWire` neither writes nor reads it, so a definition's bytes and digest do not
+depend on it and two deployments that schedule recomputation differently still agree on what a metric means; a
+definition read from the wire declares none, and its host sets its own (specification D2, ruling 5). Staleness stays
+in whole seconds, and the unit and display format stay typed. **The mapping from a time span** is
+`Legacy.windowSecondsOf`: a `System.TimeSpan` that is a whole number of seconds from 1 to 2147483647 converts to that
+many seconds, and any other span is refused (`shape-invalid`) rather than rounded.
