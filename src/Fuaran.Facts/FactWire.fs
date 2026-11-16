@@ -72,8 +72,12 @@ module FactWire =
 
     // ── reading ──────────────────────────────────────────────────────────────────────────────────
 
-    type private Ctx() =
+    type private Ctx(storedTokens: bool) =
         member val Unknown = ResizeArray<string>()
+
+        /// Whether the token rules of §3.5 are waived: true only for a fact read from data at rest by
+        /// `LegacyFact` (§3.5, the legacy reader's tolerance), never for a document.
+        member _.StoredTokens = storedTokens
 
     let private obj (v: JsonValue) (at: string) : (string * JsonValue) list =
         match v with
@@ -185,23 +189,24 @@ module FactWire =
         | JString s -> ok (Instant.tryParseAt at s)
         | _ -> refuse RefusalClass.ShapeInvalid at "an instant is a string"
 
-    /// Refuses (`token-invalid`) a token that contains one of the separators joined around it (§3.5).
-    let private noSeparator (separators: string list) (at: string) (s: string) =
+    /// Refuses (`token-invalid`) a token that contains one of the separators joined around it (§3.5),
+    /// unless the fact is being read from data at rest.
+    let private noSeparator (ctx: Ctx) (separators: string list) (at: string) (s: string) =
         for sep in separators do
-            if s.Contains sep then
+            if not ctx.StoredTokens && s.Contains sep then
                 refuse RefusalClass.TokenInvalid at (sprintf "'%s' contains '%s'" s sep)
 
     let private readSubject (ctx: Ctx) (v: JsonValue) (at: string) : SubjectRef =
         let m = members ctx v at [ "hierarchy"; "path" ]
         let hierarchy = str (get m "hierarchy") (at + ".hierarchy") true
-        noSeparator [ "/"; Fact.LineageSeparator ] (at + ".hierarchy") hierarchy
+        noSeparator ctx [ "/"; Fact.LineageSeparator ] (at + ".hierarchy") hierarchy
 
         let path =
             arr (get m "path") (at + ".path")
             |> List.mapi (fun i p ->
                 let where = sprintf "%s.path[%d]" at i
-                let s = str p where true
-                noSeparator [ ">"; Fact.LineageSeparator ] where s
+                let s = str p where (not ctx.StoredTokens)
+                noSeparator ctx [ ">"; Fact.LineageSeparator ] where s
                 s)
 
         { Hierarchy = hierarchy; Path = path }
@@ -242,7 +247,7 @@ module FactWire =
             |> List.map (fun (k, x) ->
                 let key = str (JString k) (at + ".buckets key") true
 
-                if key.Contains "=" || key.Contains ";" then
+                if not ctx.StoredTokens && (key.Contains "=" || key.Contains ";") then
                     refuse RefusalClass.TokenInvalid (at + ".buckets") (sprintf "key '%s' contains '=' or ';'" key)
 
                 key, decimal' x (at + ".buckets." + key))
@@ -280,7 +285,7 @@ module FactWire =
             let version = str (get m "version") (at + ".version") true
 
             for name, s in [ "operation", operation; "version", version ] do
-                if s.Contains ":" then
+                if not ctx.StoredTokens && s.Contains ":" then
                     refuse RefusalClass.TokenInvalid (at + "." + name) (sprintf "'%s' contains ':'" s)
 
             Computed(operation, version, str (get m "paramHash") (at + ".paramHash") false)
@@ -349,7 +354,7 @@ module FactWire =
 
         let subject = readSubject ctx (get m "subject") (at + ".subject")
         let metric = str (get m "metric") (at + ".metric") true
-        noSeparator [ Fact.LineageSeparator ] (at + ".metric") metric
+        noSeparator ctx [ Fact.LineageSeparator ] (at + ".metric") metric
         let value = readValue ctx (get m "value") (at + ".value")
         let period = readPeriod ctx (get m "period") (at + ".period")
         let asOf = instant (get m "asOf") (at + ".asOf")
@@ -781,7 +786,7 @@ module FactWire =
     ]
 
     let private readParsed (text: string) (raw: JsonValue) : ReadDocument =
-        let ctx = Ctx()
+        let ctx = Ctx(false)
 
         let doc =
             match kindOf raw "$" documentKinds with
@@ -970,3 +975,15 @@ module FactWire =
 
     /// The canonical text of one fact, checked.
     let writeFact (f: Fact) : Result<string, Refusal> = write (FactDocument f)
+
+    /// Checks a fact read from data at rest under every rule a reader applies to a fact, its id
+    /// verified, except the token rules (§3.5, the legacy reader's tolerance): a hierarchy, path member,
+    /// metric id, computed method or distribution key that a store already holds is read as it is.
+    /// Writing such a fact is still refused, by `write`.
+    let internal checkStored (f: Fact) : Result<Fact, Refusal> =
+        try
+            match Json.parse (encode (FactDocument f)) with
+            | Error why -> refuse RefusalClass.ShapeInvalid "$" ("not JSON: " + why)
+            | Ok raw -> Ok(readFact (Ctx(true)) raw "$")
+        with Refused r ->
+            Error r

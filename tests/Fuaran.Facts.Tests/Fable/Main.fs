@@ -85,18 +85,23 @@ let private run (corpus: string) : int =
         for name, actual, expected in identity do
             eprintfn "  FAIL same-inputs %s: %s, expected %s" name actual expected
 
-        let legacy = LegacyShape.failures ()
+        let legacy =
+            LegacyShape.failures ()
+            @ LegacyShape.storedTokenFailures ()
+            @ LegacyShape.ambiguityFailures ()
 
         for name, why in legacy do
             eprintfn "  FAIL legacy shape %s: %s" name why
 
         printfn
-            "fable leg: certified %d of %d vectors and %d relations; %d same-input ids; %d legacy-shape facts"
+            "fable leg: certified %d of %d vectors and %d relations; %d same-input ids; %d legacy-shape facts, %d with a stored token, %d ambiguous pairs"
             outcome.Executed
             outcome.Listed
             outcome.RelationsChecked
             SameInputs.samples.Length
             LegacyShape.samples.Length
+            LegacyShape.storedTokenSamples.Length
+            LegacyShape.ambiguities.Length
 
         let failed = outcome.Failures.Length + identity.Length + legacy.Length
 

@@ -1,5 +1,10 @@
 namespace Fuaran.Facts
 
+// `Fuaran.Core.Hash` is reached through an abbreviation, never written in an expression: compiled from
+// source beside other Fuaran.Core packages, a qualified path in an expression can resolve to a union case
+// of the same name in that namespace (see Definitions.fs). An abbreviation resolves among modules only.
+module CoreHash = Fuaran.Core.Hash
+
 /// Ordinal order (FACT_WIRE.md §3.1 rule 4): by UTF-16 code unit, one unit at a time, a shorter
 /// string first where one is a prefix of the other. Written out rather than delegated, so that the
 /// order is the same on every host this library compiles to.
@@ -90,7 +95,7 @@ module internal TextRules =
 
     /// Lower-case hex SHA-256 over the UTF-8 bytes of `text`: `Fuaran.Core`'s pure digest, the
     /// same value on .NET and under Fable.
-    let sha256Hex (text: string) : string = Fuaran.Core.Hash.sha256Hex text
+    let sha256Hex (text: string) : string = CoreHash.sha256Hex text
 
     /// Lower-case hex SHA-256 of `bytes`.
-    let sha256HexOfBytes (bytes: byte[]) : string = Fuaran.Core.Hash.sha256HexOfBytes bytes
+    let sha256HexOfBytes (bytes: byte[]) : string = CoreHash.sha256HexOfBytes bytes

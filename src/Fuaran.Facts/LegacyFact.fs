@@ -17,9 +17,18 @@ namespace Fuaran.Facts
 ///     package reads as a `HostKey` (or a `ContentAddress` when it is one).
 ///
 /// The legacy shape is **read, never written**: `FactWire` is the only writer. What is read is then held
-/// to every rule a reader of the specification applies — through `FactWire.write`, so there is one
-/// reader — so a legacy fact whose id is not the digest of its own members, or that carries a token the
-/// specification refuses, is refused here exactly as the wire would refuse it.
+/// to every rule a reader of the specification applies to a fact — through `FactWire`'s own reader, so
+/// there is one reader — so a legacy fact whose id is not the digest of its own members is refused here
+/// exactly as the wire would refuse it.
+///
+/// One rule is waived, and only here: the token rules of FACT_WIRE.md §3.5. A store holds facts written
+/// before the specification refused a separator inside a token, and they read back as stored, with
+/// their id and lineage key unchanged (`DECISIONS.md` D14): a path member containing `>` or `|`, or
+/// empty; a hierarchy containing `/` or `|`; a metric id containing `|`; a computed method's operation
+/// or version containing `:`; a distribution key containing `=` or `;`. Such a fact cannot be written:
+/// `FactWire.write` refuses it, so a new fact never carries one. Some of these tokens make two stored
+/// facts render alike — the same lineage key, and for some the same id; each is still returned as
+/// stored, and §3.5 says what a host does about it.
 [<RequireQualifiedAccess>]
 module LegacyFact =
 
@@ -206,14 +215,13 @@ module LegacyFact =
         }
 
     /// Reads one fact in the legacy saved shape, holding it to every rule the specification puts on a
-    /// reader (its id is verified, never trusted), or refuses it for one named class. The fact is
-    /// returned as the package's own type; writing it writes the specification's shape.
+    /// reader of a fact (its id is verified, never trusted) except the token rules, or refuses it for
+    /// one named class. The fact is returned as the package's own type, as stored; writing it writes the
+    /// specification's shape, and is refused when it carries a token the specification refuses.
     let read (text: string) : Result<Fact, Refusal> =
         try
             match Json.parse text with
             | Error why -> Error(Refusal.make RefusalClass.ShapeInvalid "$" ("not JSON: " + why))
-            | Ok raw ->
-                let fact = readFact raw
-                FactWire.write (FactDocument fact) |> Result.map (fun _ -> fact)
+            | Ok raw -> readFact raw |> FactWire.checkStored
         with Refused r ->
             Error r
