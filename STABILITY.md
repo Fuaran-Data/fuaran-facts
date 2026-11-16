@@ -17,12 +17,16 @@ The wire format is versioned separately, by the Fact wire specification's `wireV
 is the specification's to make first; this package follows it, and a package version that reads or writes a new
 wire version is a breaking change here.
 
-## 0.2.1 — DRAFT (Phase 37, 2026-11-16)
+## 0.2.1 — released 2026-11-16 as `v0.2.1`
 
 **An additive release.** A host's facts at rest that carry a token the specification refuses read back as stored,
 and the package's Fable source compiles in a consumer that also compiles `Fuaran.Core.Column` (`DECISIONS.md` D14).
 Certified against the Fact wire specification version 1, revision 1.2 (corpus of 150 vectors, on .NET and under
 Fable).
+
+**Release record.** Released from the Phase 37 tree (`0297465`), whose gate (`pwsh ./verify.ps1`, full lane) ran
+green: 90 tests passed and 0 failed, and 150 of 150 specification vectors were certified on .NET and under Fable,
+the Fable leg compiled beside `Fuaran.Core.Column` 0.42.0.
 
 **Additive — the reader's widened acceptance:**
 
